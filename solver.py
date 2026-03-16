@@ -86,30 +86,35 @@ def get_cross_checks(board, trie):
     return cross_checks
 
 def extend_right(board, row, col, rack, current_node, prefix, cross_checks, results, start_col, anchor_col):
-    # Base Case: We hit the right edge of the board
     if col == 15:
         if current_node.is_end_of_word and col > anchor_col:
             results.append((row, start_col, prefix))
         return
         
     if is_empty(board[row][col]):
-        # If the Trie says this prefix is a valid word, log it!
-        # ONLY IF we have passed the anchor (meaning we successfully connected to the board)
         if current_node.is_end_of_word and col > anchor_col:
             results.append((row, start_col, prefix))
             
-        # Try placing tiles from the rack onto this empty square
         for char in set(rack):
-            # The letter must be valid in the Trie AND pass the vertical cross-check
-            if char in current_node.children and char in cross_checks[row][col]:
-                rack.remove(char)
-                extend_right(board, row, col + 1, rack, current_node.children[char], prefix + char, cross_checks, results, start_col, anchor_col)
-                rack.append(char) # Backtrack
+            if char == '?':
+                # Wildcard: Try all valid Trie children that ALSO pass the cross-check
+                rack.remove('?')
+                for valid_char in current_node.children:
+                    if valid_char in cross_checks[row][col]:
+                        extend_right(board, row, col + 1, rack, current_node.children[valid_char], prefix + valid_char.lower(), cross_checks, results, start_col, anchor_col)
+                rack.append('?')
+            else:
+                # Normal letter
+                if char in current_node.children and char in cross_checks[row][col]:
+                    rack.remove(char)
+                    extend_right(board, row, col + 1, rack, current_node.children[char], prefix + char, cross_checks, results, start_col, anchor_col)
+                    rack.append(char)
     else:
-        # There is already a tile on the board here! We MUST use it.
-        existing_char = board[row][col]
-        if existing_char in current_node.children:
-            extend_right(board, row, col + 1, rack, current_node.children[existing_char], prefix + existing_char, cross_checks, results, start_col, anchor_col)
+        # Existing tile on the board. 
+        # We use .upper() just in case the board contains a lowercase wildcard from a previous turn.
+        existing_char_upper = board[row][col].upper()
+        if existing_char_upper in current_node.children:
+            extend_right(board, row, col + 1, rack, current_node.children[existing_char_upper], prefix + board[row][col], cross_checks, results, start_col, anchor_col)
 
 def get_anchors(board):
     anchors = []
@@ -138,30 +143,29 @@ def transpose_board(board):
     return [list(row) for row in zip(*board)]
 
 def left_part(board, row, anchor_col, limit, rack, current_node, prefix, cross_checks, results, start_col):
-    # First, always try to extend right from the anchor using whatever prefix we've built so far
-    # The final argument `anchor_col` is passed to ensure we actually connect to the board
     extend_right(board, row, anchor_col, rack, current_node, prefix, cross_checks, results, start_col, anchor_col)
     
-    # If we still have empty spaces to the left, try placing more tiles from the rack
     if limit > 0:
-        # We use set(rack) so we don't test duplicate letters (like two 'E's) twice
         for char in set(rack): 
-            if char in current_node.children:
-                # Remove the tile from the rack to "play" it
-                rack.remove(char)
-                
-                # Recurse deeper into the Trie and move one space left
-                left_part(board, row, anchor_col, limit - 1, rack, current_node.children[char], prefix + char, cross_checks, results, start_col - 1)
-                
-                # "Backtrack": Put the tile back on the rack so the next loop can use it
-                rack.append(char)
+            if char == '?':
+                # It's a wildcard! Try every possible valid letter path in the Trie
+                rack.remove('?')
+                for valid_char in current_node.children:
+                    left_part(board, row, anchor_col, limit - 1, rack, current_node.children[valid_char], prefix + valid_char.lower(), cross_checks, results, start_col - 1)
+                rack.append('?') # Backtrack
+            else:
+                # It's a normal letter
+                if char in current_node.children:
+                    rack.remove(char)
+                    left_part(board, row, anchor_col, limit - 1, rack, current_node.children[char], prefix + char, cross_checks, results, start_col - 1)
+                    rack.append(char)
 
 def find_all_moves(board, rack, dictionary_array):
     print("Building dictionary Trie...")
     trie = build_trie(dictionary_array)
     
-    # Ensure rack only contains valid uppercase characters (ignore empty strings from a short rack)
-    clean_rack = [tile.upper() for tile in rack if tile.isalpha()]
+    # Allow '?' to stay in the rack, while forcing A-Z to uppercase
+    clean_rack = [tile.upper() if tile.isalpha() else tile for tile in rack if tile.isalpha() or tile == '?']
     all_moves = []
     
     def scan_board(current_board, is_transposed):
@@ -170,37 +174,32 @@ def find_all_moves(board, rack, dictionary_array):
         results = []
         
         for r in range(15):
-            # Isolate the anchors for just this specific row
             row_anchors = [c for (ar, c) in anchors if ar == r]
             
             for i, anchor_col in enumerate(row_anchors):
-                # RULE 1: There is an existing tile immediately to the left
+                # RULE 1: Existing tile immediately to the left
                 if anchor_col > 0 and not is_empty(current_board[r][anchor_col - 1]):
-                    # Read the existing word chunk backwards
                     prefix = ""
                     curr_c = anchor_col - 1
                     while curr_c >= 0 and not is_empty(current_board[r][curr_c]):
                         prefix = current_board[r][curr_c] + prefix
                         curr_c -= 1
                     
-                    # Trace this existing prefix down the Trie
                     node = trie.root
                     valid_prefix = True
                     for char in prefix:
-                        if char in node.children:
-                            node = node.children[char]
+                        # Force upper() to successfully navigate the Trie
+                        if char.upper() in node.children:
+                            node = node.children[char.upper()]
                         else:
                             valid_prefix = False
                             break
                             
-                    # If the prefix is a valid start to a word, jump to extend_right
                     if valid_prefix:
-                        # Pass anchor_col as the final argument here as well
                         extend_right(current_board, r, anchor_col, clean_rack.copy(), node, prefix, cross_checks, results, anchor_col - len(prefix), anchor_col)
                 
-                # RULE 2: The space to the left is empty
+                # RULE 2: Space to the left is empty
                 else:
-                    # Calculate the limit: empty spaces up to the previous anchor or the board edge
                     prev_anchor = row_anchors[i - 1] if i > 0 else -1
                     limit = 0
                     curr_c = anchor_col - 1
@@ -210,36 +209,18 @@ def find_all_moves(board, rack, dictionary_array):
                         
                     left_part(current_board, r, anchor_col, limit, clean_rack.copy(), trie.root, "", cross_checks, results, anchor_col)
         
-        # Format the results and map coordinates back if we were scanning vertically
         for row, start_col, word in set(results):
-            # Filter out single-letter words (must be 2+ letters in Wordfeud)
             if len(word) > 1:
                 if is_transposed:
-                    # Flip coordinates back: (row, start_col) -> (start_col, row)
-                    all_moves.append({
-                        'word': word, 
-                        'row': start_col, 
-                        'col': row, 
-                        'direction': 'V'
-                    })
+                    all_moves.append({'word': word, 'row': start_col, 'col': row, 'direction': 'V'})
                 else:
-                    all_moves.append({
-                        'word': word, 
-                        'row': row, 
-                        'col': start_col, 
-                        'direction': 'H'
-                    })
+                    all_moves.append({'word': word, 'row': row, 'col': start_col, 'direction': 'H'})
 
-    # --- Execute Horizontal Scan ---
     print("Scanning horizontally...")
     scan_board(board, is_transposed=False)
-    
-    # --- Execute Vertical Scan ---
     print("Scanning vertically...")
     transposed_board = transpose_board(board)
     scan_board(transposed_board, is_transposed=True)
     
-    # Deduplicate in case a move was theoretically found via two different anchor paths
     unique_moves = { (m['word'], m['row'], m['col'], m['direction']): m for m in all_moves }
-    
     return list(unique_moves.values())
