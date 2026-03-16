@@ -106,6 +106,84 @@ def parse_wordfeud_board(image, templates):
         
     return parsed_board
 
+def parse_wordfeud_rack(image, templates):
+    """
+    Isolates the bottom UI area of the screen, finds up to 7 player tiles, 
+    and classifies them. Returns a list of strings (e.g., ['A', 'B', 'C']).
+    """
+    if image is None:
+        raise ValueError("Provided image is None.")
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 40, 255, cv2.THRESH_BINARY_INV)
+
+    # 1. Find the main board to establish our dynamic sizing and Y-cutoff
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        raise ValueError("Could not find any contours in the image.")
+        
+    largest_contour = max(contours, key=cv2.contourArea)
+    x, y, w, h = cv2.boundingRect(largest_contour)
+    
+    # Calculate what a "valid tile" should look like mathematically
+    expected_area = w * 155
+
+    # 2. Crop the image to just the area BELOW the game board
+    bottom_ui_top = y + h
+    bottom_ui_gray = gray[bottom_ui_top:, :]
+    _, ui_thresh = cv2.threshold(bottom_ui_gray, 40, 255, cv2.THRESH_BINARY_INV)
+
+    # 3. Find all contours in the bottom UI
+    # We use RETR_LIST here instead of RETR_EXTERNAL just in case the tiles 
+    # are sitting inside a larger "rack container" contour.
+    ui_contours, _ = cv2.findContours(ui_thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+    rack_bounding_box = (0,0,0,0)
+
+    for cnt in ui_contours:
+        cnt_x, cnt_y, cnt_w, cnt_h = cv2.boundingRect(cnt)
+        aspect_ratio = float(cnt_w) / cnt_h
+
+        area = cnt_w * cnt_h
+        
+        # 4. Filter: Must be roughly square and close to the expected tile area
+        is_square = 6.1 <= aspect_ratio <= 6.6
+        is_right_size = (0.6 * expected_area) < area < (1.4 * expected_area)
+        
+        if is_square and is_right_size:
+            # We add the bounding box to our list
+            rack_bounding_box = (cnt_x, cnt_y, cnt_w, cnt_h)
+    
+    # 4. Split into seven equal tiles
+    rack_img = gray[bottom_ui_top + rack_bounding_box[1]:bottom_ui_top + rack_bounding_box[1] + rack_bounding_box[3], 
+                    rack_bounding_box[0]:rack_bounding_box[0] + rack_bounding_box[2]]
+    
+    tile_width = rack_bounding_box[2] // 7
+    tiles = []
+    for i in range(7):
+        start_column = i * tile_width
+
+        if i == 6:
+            end_column = rack_bounding_box[2]
+        else:
+            end_column = (i + 1) * tile_width
+
+        tile_img = rack_img[:, start_column:end_column]
+        tiles.append(tile_img)
+
+    # 5. Classify the Rack Tiles
+    parsed_rack = []
+    for tile in tiles:
+        best_match = predict_cell_absolute(tile, templates)
+
+        if best_match == 'EMPTY':
+            parsed_rack.append("")
+        else:
+            parsed_rack.append(best_match)
+
+
+    return parsed_rack
+
 def print_board(parsed_board):
     """Prints the 15x15 parsed board array in an aligned console grid."""
     for row in parsed_board:
