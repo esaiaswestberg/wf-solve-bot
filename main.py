@@ -1,4 +1,5 @@
 import cv2
+import sys
 from parse import parse_wordfeud_board, print_board, load_existing_templates
 
 if __name__ == "__main__":
@@ -12,7 +13,7 @@ if __name__ == "__main__":
         exit()
 
     # 2. Load your image using cv2
-    target_image = cv2.imread('examples/Screenshot_20260315-201659_Wordfeud.png')
+    target_image = cv2.imread(sys.argv[1])
     
     # 3. Call your function
     try:
