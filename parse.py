@@ -177,7 +177,7 @@ def parse_wordfeud_rack(image, templates):
         best_match = predict_cell_absolute(tile, templates)
 
         if best_match == 'EMPTY':
-            parsed_rack.append("")
+            parsed_rack.append("?")
         else:
             parsed_rack.append(best_match)
 

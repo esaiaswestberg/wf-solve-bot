@@ -85,35 +85,17 @@ def get_cross_checks(board, trie):
 
     return cross_checks
 
-def left_part(board, row, anchor_col, limit, rack, current_node, prefix, cross_checks, results, start_col):
-    # First, always try to extend right from the anchor using whatever prefix we've built so far
-    extend_right(board, row, anchor_col, rack, current_node, prefix, cross_checks, results, start_col)
-    
-    # If we still have empty spaces to the left, try placing more tiles from the rack
-    if limit > 0:
-        # We use set(rack) so we don't test duplicate letters (like two 'E's) twice
-        for char in set(rack): 
-            if char in current_node.children:
-                # Remove the tile from the rack to "play" it
-                rack.remove(char)
-                
-                # Recurse deeper into the Trie and move one space left
-                left_part(board, row, anchor_col, limit - 1, rack, current_node.children[char], prefix + char, cross_checks, results, start_col - 1)
-                
-                # "Backtrack": Put the tile back on the rack so the next loop can use it
-                rack.append(char)
-
-def extend_right(board, row, col, rack, current_node, prefix, cross_checks, results, start_col):
+def extend_right(board, row, col, rack, current_node, prefix, cross_checks, results, start_col, anchor_col):
     # Base Case: We hit the right edge of the board
     if col == 15:
-        if current_node.is_end_of_word:
+        if current_node.is_end_of_word and col > anchor_col:
             results.append((row, start_col, prefix))
         return
         
     if is_empty(board[row][col]):
         # If the Trie says this prefix is a valid word, log it!
-        # (We will filter out invalid plays, like playing zero tiles, later)
-        if current_node.is_end_of_word:
+        # ONLY IF we have passed the anchor (meaning we successfully connected to the board)
+        if current_node.is_end_of_word and col > anchor_col:
             results.append((row, start_col, prefix))
             
         # Try placing tiles from the rack onto this empty square
@@ -121,13 +103,13 @@ def extend_right(board, row, col, rack, current_node, prefix, cross_checks, resu
             # The letter must be valid in the Trie AND pass the vertical cross-check
             if char in current_node.children and char in cross_checks[row][col]:
                 rack.remove(char)
-                extend_right(board, row, col + 1, rack, current_node.children[char], prefix + char, cross_checks, results, start_col)
+                extend_right(board, row, col + 1, rack, current_node.children[char], prefix + char, cross_checks, results, start_col, anchor_col)
                 rack.append(char) # Backtrack
     else:
         # There is already a tile on the board here! We MUST use it.
         existing_char = board[row][col]
         if existing_char in current_node.children:
-            extend_right(board, row, col + 1, rack, current_node.children[existing_char], prefix + existing_char, cross_checks, results, start_col)
+            extend_right(board, row, col + 1, rack, current_node.children[existing_char], prefix + existing_char, cross_checks, results, start_col, anchor_col)
 
 def get_anchors(board):
     anchors = []
@@ -154,6 +136,25 @@ def get_anchors(board):
 def transpose_board(board):
     """Flips the board across its diagonal to check vertical moves using horizontal logic."""
     return [list(row) for row in zip(*board)]
+
+def left_part(board, row, anchor_col, limit, rack, current_node, prefix, cross_checks, results, start_col):
+    # First, always try to extend right from the anchor using whatever prefix we've built so far
+    # The final argument `anchor_col` is passed to ensure we actually connect to the board
+    extend_right(board, row, anchor_col, rack, current_node, prefix, cross_checks, results, start_col, anchor_col)
+    
+    # If we still have empty spaces to the left, try placing more tiles from the rack
+    if limit > 0:
+        # We use set(rack) so we don't test duplicate letters (like two 'E's) twice
+        for char in set(rack): 
+            if char in current_node.children:
+                # Remove the tile from the rack to "play" it
+                rack.remove(char)
+                
+                # Recurse deeper into the Trie and move one space left
+                left_part(board, row, anchor_col, limit - 1, rack, current_node.children[char], prefix + char, cross_checks, results, start_col - 1)
+                
+                # "Backtrack": Put the tile back on the rack so the next loop can use it
+                rack.append(char)
 
 def find_all_moves(board, rack, dictionary_array):
     print("Building dictionary Trie...")
@@ -194,7 +195,8 @@ def find_all_moves(board, rack, dictionary_array):
                             
                     # If the prefix is a valid start to a word, jump to extend_right
                     if valid_prefix:
-                        extend_right(current_board, r, anchor_col, clean_rack.copy(), node, prefix, cross_checks, results, anchor_col - len(prefix))
+                        # Pass anchor_col as the final argument here as well
+                        extend_right(current_board, r, anchor_col, clean_rack.copy(), node, prefix, cross_checks, results, anchor_col - len(prefix), anchor_col)
                 
                 # RULE 2: The space to the left is empty
                 else:
