@@ -65,42 +65,6 @@ flutter:
     # Dictionaries
     - assets/static/dictionaries/english/sowpods/
     - assets/static/dictionaries/swedish/swedish/
-    
-    # Template images
-    - assets/static/templates/A/
-    - assets/static/templates/B/
-    - assets/static/templates/C/
-    - assets/static/templates/D/
-    - assets/static/templates/E/
-    - assets/static/templates/F/
-    - assets/static/templates/G/
-    - assets/static/templates/H/
-    - assets/static/templates/I/
-    - assets/static/templates/J/
-    - assets/static/templates/K/
-    - assets/static/templates/L/
-    - assets/static/templates/M/
-    - assets/static/templates/N/
-    - assets/static/templates/O/
-    - assets/static/templates/P/
-    - assets/static/templates/Q/
-    - assets/static/templates/R/
-    - assets/static/templates/S/
-    - assets/static/templates/T/
-    - assets/static/templates/U/
-    - assets/static/templates/V/
-    - assets/static/templates/W/
-    - assets/static/templates/X/
-    - assets/static/templates/Y/
-    - assets/static/templates/Z/
-    - assets/static/templates/Å/
-    - assets/static/templates/Ä/
-    - assets/static/templates/Ö/
-    - assets/static/templates/EMPTY/
-    - assets/static/templates/DW/
-    - assets/static/templates/TW/
-    - assets/static/templates/DL/
-    - assets/static/templates/TL/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
