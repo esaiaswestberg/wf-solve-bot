@@ -34,8 +34,9 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  final WordfeudEngine _engine = WordfeudEngine();
+  final WordfeudWorker _worker = WordfeudWorker();
 
+  XFile? _selectedImage;
   bool _isInitializing = true;
   bool _isSolving = false;
   List<Move> _solutions = [];
@@ -70,26 +71,42 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> _setupEngine() async {
     try {
-      await _engine.initializeFromAssets(
-        dictionaryPath:
-            'assets/static/dictionaries/swedish/swedish/dictionary.txt',
-        letterValuesPath:
-            'assets/static/dictionaries/swedish/swedish/letter_values.csv',
-        templateAssetPaths: await _buildTemplateMapDynamically(),
+      final templatePaths = await _buildTemplateMapDynamically();
+
+      String dictText = await rootBundle.loadString(
+        'assets/static/dictionaries/swedish/swedish/dictionary.txt',
+      );
+      String csvText = await rootBundle.loadString(
+        'assets/static/dictionaries/swedish/swedish/letter_values.csv',
+      );
+
+      Map<String, List<Uint8List>> templateBytes = {};
+      for (var entry in templatePaths.entries) {
+        templateBytes[entry.key] = [];
+        for (var path in entry.value) {
+          ByteData data = await rootBundle.load(path);
+          templateBytes[entry.key]!.add(data.buffer.asUint8List());
+        }
+      }
+
+      await _worker.initialize(
+        dictText: dictText,
+        csvText: csvText,
+        templateBytes: templateBytes,
       );
 
       setState(() {
         _isInitializing = false;
       });
 
-      if (kDebugMode) print("Engine is locked and loaded.");
+      if (kDebugMode) print("Worker Thread is locked and loaded.");
     } catch (e) {
-      if (kDebugMode) print("Failed to initialize engine: $e");
+      if (kDebugMode) print("Failed to initialize worker: $e");
     }
   }
 
   Future<void> _openImagePicker() async {
-    if (!_engine.isReady) return;
+    if (!_worker.isReady) return;
 
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
@@ -99,18 +116,19 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {
       _isSolving = true;
       _solutions = [];
-      _selectedMove = null;
       _boardState = [];
+      _selectedMove = null;
+      _selectedImage = image;
     });
 
     try {
-      final moves = _engine.solveFromImage(image.path);
+      final response = await _worker.solve(image.path);
 
       setState(() {
-        _solutions = moves;
-        _boardState = _engine.lastParsedBoard; // Grab the board!
+        _solutions = response.moves;
+        _boardState = response.board;
         if (_solutions.isNotEmpty) {
-          _selectedMove = _solutions.first; // Auto-select the best move
+          _selectedMove = _solutions.first;
         }
         _isSolving = false;
       });

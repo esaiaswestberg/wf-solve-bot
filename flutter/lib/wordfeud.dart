@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
+import 'dart:isolate';
 
 // --- DATA MODELS ---
 
@@ -115,6 +116,44 @@ class WordfeudEngine {
     }
 
     // Pass the decoded assets into memory
+    _initialize(
+      dictionaryWords: dictWords,
+      letterValues: points,
+      preloadedTemplates: loadedTemplates,
+    );
+  }
+
+  /// Initializes the engine using raw bytes passed from the main thread.
+  void initializeFromRawData({
+    required String dictionaryText,
+    required String letterValuesText,
+    required Map<String, List<Uint8List>> templateBytes,
+  }) {
+    List<String> dictWords = dictionaryText
+        .split('\n')
+        .where((w) => w.trim().isNotEmpty)
+        .toList();
+
+    Map<String, int> points = {};
+    for (var line in letterValuesText.split('\n')) {
+      var parts = line.split(',');
+      if (parts.length >= 2) {
+        points[parts[0].trim().toUpperCase()] =
+            int.tryParse(parts[1].trim()) ?? 0;
+      }
+    }
+
+    Map<String, List<cv.Mat>> loadedTemplates = {};
+    for (var entry in templateBytes.entries) {
+      String label = entry.key;
+      List<cv.Mat> mats = [];
+      for (var bytes in entry.value) {
+        cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_GRAYSCALE);
+        if (!mat.isEmpty) mats.add(mat);
+      }
+      loadedTemplates[label] = mats;
+    }
+
     _initialize(
       dictionaryWords: dictWords,
       letterValues: points,
@@ -774,5 +813,97 @@ class WordfeudEngine {
     int total = baseScore * wordMultiplier;
     if (tilesPlayed == 7) total += 40;
     return total;
+  }
+}
+
+class SolveResponse {
+  final List<Move> moves;
+  final List<List<String>> board;
+  SolveResponse(this.moves, this.board);
+}
+
+class WordfeudWorker {
+  SendPort? _backgroundSendPort;
+  final ReceivePort _mainReceivePort = ReceivePort();
+  bool isReady = false;
+
+  /// Spawns the isolate and passes the raw asset data into it.
+  Future<void> initialize({
+    required String dictText,
+    required String csvText,
+    required Map<String, List<Uint8List>> templateBytes,
+  }) async {
+    // 1. Spawn the background thread
+    await Isolate.spawn(_isolateEntry, _mainReceivePort.sendPort);
+    final broadcastStream = _mainReceivePort.asBroadcastStream();
+
+    // 2. Grab the port to talk to the background thread
+    _backgroundSendPort = await broadcastStream.first as SendPort;
+
+    // 3. Send the raw data
+    _backgroundSendPort!.send({
+      'type': 'INIT',
+      'dictText': dictText,
+      'csvText': csvText,
+      'templateBytes': templateBytes,
+    });
+
+    // 4. Wait for it to finish building the Trie and OpenCV Mats
+    await broadcastStream.firstWhere((msg) => msg == 'READY');
+    isReady = true;
+  }
+
+  /// Sends an image path to the background thread and waits for the solution.
+  Future<SolveResponse> solve(String imagePath) async {
+    if (!isReady || _backgroundSendPort == null)
+      throw Exception("Worker not ready.");
+
+    final responsePort = ReceivePort();
+    _backgroundSendPort!.send({
+      'type': 'SOLVE',
+      'path': imagePath,
+      'replyTo': responsePort.sendPort,
+    });
+
+    final result = await responsePort.first;
+    responsePort.close();
+    return result as SolveResponse;
+  }
+
+  // --- THE ISOLATE MEMORY SPACE ---
+  // This function runs in a completely separate thread.
+  // It cannot access anything from the main app state.
+  static void _isolateEntry(SendPort mainSendPort) {
+    final backgroundReceivePort = ReceivePort();
+    mainSendPort.send(backgroundReceivePort.sendPort);
+
+    final engine = WordfeudEngine();
+
+    backgroundReceivePort.listen((message) {
+      if (message is Map) {
+        if (message['type'] == 'INIT') {
+          // Build the engine in the background
+          engine.initializeFromRawData(
+            dictionaryText: message['dictText'],
+            letterValuesText: message['csvText'],
+            templateBytes: message['templateBytes'],
+          );
+          mainSendPort.send('READY');
+        } else if (message['type'] == 'SOLVE') {
+          // Solve the image in the background
+          String path = message['path'];
+          SendPort replyTo = message['replyTo'];
+
+          try {
+            final moves = engine.solveFromImage(path);
+            final board = engine.lastParsedBoard;
+            replyTo.send(SolveResponse(moves, board));
+          } catch (e) {
+            print("Background Isolate Error: $e");
+            replyTo.send(SolveResponse([], [])); // Return empty on fail
+          }
+        }
+      }
+    });
   }
 }
