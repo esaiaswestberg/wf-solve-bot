@@ -814,6 +814,37 @@ class WordfeudEngine {
     if (tilesPlayed == 7) total += 40;
     return total;
   }
+
+  /// Swaps the active dictionary and point values without reloading image templates.
+  void updateDictionary({
+    required String dictionaryText,
+    required String letterValuesText,
+  }) {
+    // Clear the old Trie
+    _dictionaryTrie.root.children.clear();
+
+    // Load the new one
+    List<String> dictWords = dictionaryText
+        .split('\n')
+        .where((w) => w.trim().isNotEmpty)
+        .toList();
+    for (var word in dictWords) {
+      _dictionaryTrie.insert(word.trim());
+    }
+
+    // Load the new point values
+    Map<String, int> points = {};
+    for (var line in letterValuesText.split('\n')) {
+      var parts = line.split(',');
+      if (parts.length >= 2) {
+        points[parts[0].trim().toUpperCase()] =
+            int.tryParse(parts[1].trim()) ?? 0;
+      }
+    }
+
+    _pointValues = points;
+    _pointValues['?'] = 0;
+  }
 }
 
 class SolveResponse {
@@ -889,6 +920,13 @@ class WordfeudWorker {
             templateBytes: message['templateBytes'],
           );
           mainSendPort.send('READY');
+        } else if (message['type'] == 'CHANGE_DICT') {
+          // Swap the dictionary in the background
+          engine.updateDictionary(
+            dictionaryText: message['dictText'],
+            letterValuesText: message['csvText'],
+          );
+          message['replyTo'].send('DONE');
         } else if (message['type'] == 'SOLVE') {
           // Solve the image in the background
           String path = message['path'];
@@ -905,5 +943,22 @@ class WordfeudWorker {
         }
       }
     });
+  }
+
+  /// Tells the background isolate to swap out the active dictionary.
+  Future<void> changeDictionary(String dictText, String csvText) async {
+    if (!isReady || _backgroundSendPort == null) return;
+
+    final responsePort = ReceivePort();
+    _backgroundSendPort!.send({
+      'type': 'CHANGE_DICT',
+      'dictText': dictText,
+      'csvText': csvText,
+      'replyTo': responsePort.sendPort,
+    });
+
+    // Wait for the background thread to finish building the new Trie
+    await responsePort.first;
+    responsePort.close();
   }
 }

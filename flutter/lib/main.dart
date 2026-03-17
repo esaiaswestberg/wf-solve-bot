@@ -2,11 +2,37 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
-
 import 'package:wf_solvr/wordfeud.dart';
+import 'dart:convert';
 
 void main() {
   runApp(const MyApp());
+}
+
+class DictionaryMetadata {
+  final String title;
+  final String language;
+  final String dictionaryName;
+  final String dictPath;
+  final String csvPath;
+
+  DictionaryMetadata({
+    required this.title,
+    required this.language,
+    required this.dictionaryName,
+    required this.dictPath,
+    required this.csvPath,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DictionaryMetadata &&
+          title == other.title &&
+          dictionaryName == other.dictionaryName;
+
+  @override
+  int get hashCode => title.hashCode ^ dictionaryName.hashCode;
 }
 
 class MyApp extends StatelessWidget {
@@ -43,6 +69,11 @@ class _MyHomePageState extends State<MyHomePage> {
   List<List<String>> _boardState = [];
   Move? _selectedMove;
 
+  // New state variables for the dictionary selector
+  List<DictionaryMetadata> _availableDictionaries = [];
+  DictionaryMetadata? _activeDictionary;
+  bool _isChangingDictionary = false;
+
   @override
   void initState() {
     super.initState();
@@ -73,13 +104,42 @@ class _MyHomePageState extends State<MyHomePage> {
     try {
       final templatePaths = await _buildTemplateMapDynamically();
 
-      String dictText = await rootBundle.loadString(
-        'assets/static/dictionaries/swedish/swedish/dictionary.txt',
-      );
-      String csvText = await rootBundle.loadString(
-        'assets/static/dictionaries/swedish/swedish/letter_values.csv',
+      // 1. Scan the manifest for all metadata.json files
+      final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+      final metaAssets = manifest.listAssets().where(
+        (p) =>
+            p.startsWith('assets/static/dictionaries/') &&
+            p.endsWith('metadata.json'),
       );
 
+      List<DictionaryMetadata> loadedDicts = [];
+      for (String metaPath in metaAssets) {
+        String jsonStr = await rootBundle.loadString(metaPath);
+        Map<String, dynamic> json = jsonDecode(jsonStr);
+
+        String dirPath = metaPath.substring(0, metaPath.lastIndexOf('/'));
+
+        loadedDicts.add(
+          DictionaryMetadata(
+            title: json['title'] ?? 'Unknown',
+            language: json['language'] ?? 'unknown',
+            dictionaryName: json['dictionary'] ?? 'Unknown',
+            dictPath: '$dirPath/dictionary.txt',
+            csvPath: '$dirPath/letter_values.csv',
+          ),
+        );
+      }
+
+      // Default to the first dictionary we found
+      final firstDict = loadedDicts.isNotEmpty ? loadedDicts.first : null;
+
+      if (firstDict == null)
+        throw Exception("No dictionaries found in assets!");
+
+      String dictText = await rootBundle.loadString(firstDict.dictPath);
+      String csvText = await rootBundle.loadString(firstDict.csvPath);
+
+      // Load Templates
       Map<String, List<Uint8List>> templateBytes = {};
       for (var entry in templatePaths.entries) {
         templateBytes[entry.key] = [];
@@ -96,12 +156,49 @@ class _MyHomePageState extends State<MyHomePage> {
       );
 
       setState(() {
+        _availableDictionaries = loadedDicts;
+        _activeDictionary = firstDict;
         _isInitializing = false;
       });
-
-      if (kDebugMode) print("Worker Thread is locked and loaded.");
     } catch (e) {
       if (kDebugMode) print("Failed to initialize worker: $e");
+    }
+  }
+
+  Future<void> _handleDictionaryChange(DictionaryMetadata? newDict) async {
+    if (newDict == null || newDict == _activeDictionary || !_worker.isReady)
+      return;
+
+    setState(() {
+      _isChangingDictionary = true;
+      _activeDictionary = newDict;
+      _solutions = []; // Clear old solutions that no longer apply
+      _selectedMove = null;
+    });
+
+    try {
+      // Load the new strings
+      String dictText = await rootBundle.loadString(newDict.dictPath);
+      String csvText = await rootBundle.loadString(newDict.csvPath);
+
+      // Tell the background thread to swap them
+      await _worker.changeDictionary(dictText, csvText);
+
+      // If we already have an image loaded, automatically re-solve it!
+      if (_selectedImage != null) {
+        final response = await _worker.solve(_selectedImage!.path);
+        setState(() {
+          _solutions = response.moves;
+          _boardState = response.board;
+          if (_solutions.isNotEmpty) _selectedMove = _solutions.first;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) print("Failed to swap dictionary: $e");
+    } finally {
+      setState(() {
+        _isChangingDictionary = false;
+      });
     }
   }
 
@@ -234,6 +331,73 @@ class _MyHomePageState extends State<MyHomePage> {
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
+        actions: [
+          if (_isChangingDictionary)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.0),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            )
+          else if (_availableDictionaries.isNotEmpty &&
+              _activeDictionary != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: DropdownButton<DictionaryMetadata>(
+                value: _activeDictionary,
+                icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
+                dropdownColor: Theme.of(context).colorScheme.surface,
+                underline: const SizedBox(), // Hides the default underline
+                onChanged: _handleDictionaryChange,
+                // 1. What to show when the menu is CLOSED (in the AppBar)
+                selectedItemBuilder: (BuildContext context) {
+                  return _availableDictionaries.map<Widget>((
+                    DictionaryMetadata dict,
+                  ) {
+                    return Center(
+                      child: Text(
+                        dict.title,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white, // Matches typical AppBar text
+                        ),
+                      ),
+                    );
+                  }).toList();
+                },
+                // 2. What to show when the menu is OPEN (the list items)
+                items: _availableDictionaries.map((DictionaryMetadata dict) {
+                  return DropdownMenuItem<DictionaryMetadata>(
+                    value: dict,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          dict.title,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          dict.dictionaryName,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+        ],
       ),
       body: _isInitializing
           ? const Center(child: CircularProgressIndicator())
