@@ -886,8 +886,9 @@ class WordfeudWorker {
 
   /// Sends an image path to the background thread and waits for the solution.
   Future<SolveResponse> solve(String imagePath) async {
-    if (!isReady || _backgroundSendPort == null)
+    if (!isReady || _backgroundSendPort == null) {
       throw Exception("Worker not ready.");
+    }
 
     final responsePort = ReceivePort();
     _backgroundSendPort!.send({
