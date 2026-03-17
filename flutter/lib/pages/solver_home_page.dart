@@ -1,24 +1,34 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:wf_solvr/models/dictionary_metadata.dart';
+import 'package:wf_solvr/services/dictionary_assets_repository.dart';
+import 'package:wf_solvr/services/dictionary_selection_store.dart';
 import 'package:wf_solvr/widgets/solver_board_grid.dart';
 import 'package:wf_solvr/widgets/solver_results_list.dart';
 import 'package:wf_solvr/wordfeud.dart';
 
 class SolverHomePage extends StatefulWidget {
-  const SolverHomePage({super.key, required this.title});
+  const SolverHomePage({
+    super.key,
+    required this.title,
+    this.worker,
+    this.assetsRepository,
+    this.selectionStore,
+  });
 
   final String title;
+  final SolverWorker? worker;
+  final DictionaryAssetsRepository? assetsRepository;
+  final DictionarySelectionStore? selectionStore;
 
   @override
   State<SolverHomePage> createState() => _SolverHomePageState();
 }
 
 class _SolverHomePageState extends State<SolverHomePage> {
-  final WordfeudWorker _worker = WordfeudWorker();
+  late final SolverWorker _worker;
+  late final DictionaryAssetsRepository _assetsRepository;
+  late final DictionarySelectionStore _selectionStore;
 
   XFile? _selectedImage;
   bool _isInitializing = true;
@@ -33,80 +43,37 @@ class _SolverHomePageState extends State<SolverHomePage> {
   @override
   void initState() {
     super.initState();
+    _worker = widget.worker ?? WordfeudWorker();
+    _assetsRepository =
+        widget.assetsRepository ?? RootBundleDictionaryAssetsRepository();
+    _selectionStore =
+        widget.selectionStore ??
+        const SharedPreferencesDictionarySelectionStore();
     _setupEngine();
-  }
-
-  Future<Map<String, List<String>>> _buildTemplateMapDynamically() async {
-    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-    final allAssets = manifest.listAssets();
-    final templatePaths = <String, List<String>>{};
-
-    final templateAssets = allAssets.where(
-      (path) => path.startsWith('assets/static/templates/'),
-    );
-
-    for (final path in templateAssets) {
-      final parts = path.split('/');
-      if (parts.length >= 2) {
-        final label = parts[parts.length - 2];
-        templatePaths.putIfAbsent(label, () => []);
-        templatePaths[label]!.add(path);
-      }
-    }
-
-    return templatePaths;
   }
 
   Future<void> _setupEngine() async {
     try {
-      final templatePaths = await _buildTemplateMapDynamically();
-      final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-      final metaAssets = manifest.listAssets().where(
-        (path) =>
-            path.startsWith('assets/static/dictionaries/') &&
-            path.endsWith('metadata.json'),
+      final loadResult = await _assetsRepository.load();
+      final selectedDictionaryId = await _selectionStore
+          .loadSelectedDictionaryId();
+      final initialDictionary = resolveInitialDictionary(
+        dictionaries: loadResult.dictionaries,
+        selectedDictionaryId: selectedDictionaryId,
       );
 
-      final loadedDictionaries = <DictionaryMetadata>[];
-      for (final metaPath in metaAssets) {
-        final jsonStr = await rootBundle.loadString(metaPath);
-        final json = jsonDecode(jsonStr) as Map<String, dynamic>;
-        final dirPath = metaPath.substring(0, metaPath.lastIndexOf('/'));
-
-        loadedDictionaries.add(
-          DictionaryMetadata(
-            title: json['title'] ?? 'Unknown',
-            language: json['language'] ?? 'unknown',
-            dictionaryName: json['dictionary'] ?? 'Unknown',
-            dictPath: '$dirPath/dictionary.txt',
-            csvPath: '$dirPath/letter_values.csv',
-          ),
-        );
-      }
-
-      final firstDictionary = loadedDictionaries.isNotEmpty
-          ? loadedDictionaries.first
-          : null;
-      if (firstDictionary == null) {
+      if (initialDictionary == null) {
         throw Exception('No dictionaries found in assets!');
       }
 
-      final dictText = await rootBundle.loadString(firstDictionary.dictPath);
-      final csvText = await rootBundle.loadString(firstDictionary.csvPath);
-
-      final templateBytes = <String, List<Uint8List>>{};
-      for (final entry in templatePaths.entries) {
-        templateBytes[entry.key] = [];
-        for (final path in entry.value) {
-          final data = await rootBundle.load(path);
-          templateBytes[entry.key]!.add(data.buffer.asUint8List());
-        }
-      }
+      final initialDictionaryData = await _assetsRepository.loadDictionaryData(
+        initialDictionary,
+      );
 
       await _worker.initialize(
-        dictText: dictText,
-        csvText: csvText,
-        templateBytes: templateBytes,
+        dictText: initialDictionaryData.dictText,
+        csvText: initialDictionaryData.csvText,
+        templateBytes: loadResult.templateBytes,
       );
 
       if (!mounted) {
@@ -114,8 +81,8 @@ class _SolverHomePageState extends State<SolverHomePage> {
       }
 
       setState(() {
-        _availableDictionaries = loadedDictionaries;
-        _activeDictionary = firstDictionary;
+        _availableDictionaries = loadResult.dictionaries;
+        _activeDictionary = initialDictionary;
         _isInitializing = false;
       });
     } catch (error) {
@@ -132,18 +99,32 @@ class _SolverHomePageState extends State<SolverHomePage> {
       return;
     }
 
+    final previousDictionary = _activeDictionary;
+
     setState(() {
       _isChangingDictionary = true;
-      _activeDictionary = newDictionary;
       _solutions = [];
       _selectedMove = null;
     });
 
     try {
-      final dictText = await rootBundle.loadString(newDictionary.dictPath);
-      final csvText = await rootBundle.loadString(newDictionary.csvPath);
+      final dictionaryData = await _assetsRepository.loadDictionaryData(
+        newDictionary,
+      );
 
-      await _worker.changeDictionary(dictText, csvText);
+      await _worker.changeDictionary(
+        dictionaryData.dictText,
+        dictionaryData.csvText,
+      );
+      await _selectionStore.saveSelectedDictionaryId(newDictionary.id);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _activeDictionary = newDictionary;
+      });
 
       if (_selectedImage != null) {
         final response = await _worker.solve(_selectedImage!.path);
@@ -161,6 +142,11 @@ class _SolverHomePageState extends State<SolverHomePage> {
       }
     } catch (error) {
       debugPrint('Failed to swap dictionary: $error');
+      if (mounted) {
+        setState(() {
+          _activeDictionary = previousDictionary;
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {

@@ -13,6 +13,8 @@ class DictionaryMetadata {
     required this.csvPath,
   });
 
+  String get id => dictPath;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

@@ -853,12 +853,25 @@ class SolveResponse {
   SolveResponse(this.moves, this.board);
 }
 
-class WordfeudWorker {
+abstract class SolverWorker {
+  bool get isReady;
+  Future<void> initialize({
+    required String dictText,
+    required String csvText,
+    required Map<String, List<Uint8List>> templateBytes,
+  });
+  Future<SolveResponse> solve(String imagePath);
+  Future<void> changeDictionary(String dictText, String csvText);
+}
+
+class WordfeudWorker implements SolverWorker {
   SendPort? _backgroundSendPort;
   final ReceivePort _mainReceivePort = ReceivePort();
+  @override
   bool isReady = false;
 
   /// Spawns the isolate and passes the raw asset data into it.
+  @override
   Future<void> initialize({
     required String dictText,
     required String csvText,
@@ -885,6 +898,7 @@ class WordfeudWorker {
   }
 
   /// Sends an image path to the background thread and waits for the solution.
+  @override
   Future<SolveResponse> solve(String imagePath) async {
     if (!isReady || _backgroundSendPort == null) {
       throw Exception("Worker not ready.");
@@ -947,6 +961,7 @@ class WordfeudWorker {
   }
 
   /// Tells the background isolate to swap out the active dictionary.
+  @override
   Future<void> changeDictionary(String dictText, String csvText) async {
     if (!isReady || _backgroundSendPort == null) return;
 
