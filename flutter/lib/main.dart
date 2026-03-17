@@ -1,3 +1,4 @@
+import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -161,7 +162,7 @@ class _MyHomePageState extends State<MyHomePage> {
         _isInitializing = false;
       });
     } catch (e) {
-      if (kDebugMode) print("Failed to initialize worker: $e");
+      print("Failed to initialize worker: $e");
     }
   }
 
@@ -194,7 +195,7 @@ class _MyHomePageState extends State<MyHomePage> {
         });
       }
     } catch (e) {
-      if (kDebugMode) print("Failed to swap dictionary: $e");
+      print("Failed to swap dictionary: $e");
     } finally {
       setState(() {
         _isChangingDictionary = false;
@@ -230,7 +231,7 @@ class _MyHomePageState extends State<MyHomePage> {
         _isSolving = false;
       });
     } catch (e) {
-      if (kDebugMode) print("Error solving image: $e");
+      print("Error solving image: $e");
       setState(() => _isSolving = false);
     }
   }
