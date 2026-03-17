@@ -62,6 +62,9 @@ class WordfeudEngine {
   Map<String, int> _pointValues = {};
   Map<String, List<cv.Mat>> _templates = {};
 
+  List<List<String>> lastParsedBoard = [];
+  List<String> lastParsedRack = [];
+
   bool get isReady => _pointValues.isNotEmpty && _templates.isNotEmpty;
 
   // --- ASSET LOADING HELPER ---
@@ -145,6 +148,9 @@ class WordfeudEngine {
     List<List<String>> board = _parseBoard(image);
     List<String> rack = _parseRack(image);
     image.dispose();
+
+    lastParsedBoard = board;
+    lastParsedRack = rack;
 
     // 2. Solve Board
     List<Move> allMoves = _findAllMoves(board, rack);

@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
-import 'dart:io';
 
 import 'package:wf_solvr/wordfeud.dart';
 
@@ -16,16 +15,18 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'Wordfeud Solver',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
+        useMaterial3: true,
+      ),
+      home: const MyHomePage(title: 'Wordfeud Solver'),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
-
   final String title;
 
   @override
@@ -34,11 +35,12 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final WordfeudEngine _engine = WordfeudEngine();
-  XFile? _selectedImage;
 
   bool _isInitializing = true;
   bool _isSolving = false;
   List<Move> _solutions = [];
+  List<List<String>> _boardState = [];
+  Move? _selectedMove;
 
   @override
   void initState() {
@@ -47,32 +49,22 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<Map<String, List<String>>> _buildTemplateMapDynamically() async {
-    // Load the auto-generated asset manifest
     final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-
-    // Get a list of ALL files bundled in the app
     final allAssets = manifest.listAssets();
-
     Map<String, List<String>> templatePaths = {};
 
-    // Filter only the files in your templates directory
     final templateAssets = allAssets.where(
       (path) => path.startsWith('assets/static/templates/'),
     );
 
     for (String path in templateAssets) {
-      // path looks like: "assets/static/templates/A/1.png"
       final parts = path.split('/');
-
-      // The second to last part is the folder name (the label)
       if (parts.length >= 2) {
         final label = parts[parts.length - 2];
-
         templatePaths.putIfAbsent(label, () => []);
         templatePaths[label]!.add(path);
       }
     }
-
     return templatePaths;
   }
 
@@ -90,13 +82,9 @@ class _MyHomePageState extends State<MyHomePage> {
         _isInitializing = false;
       });
 
-      if (kDebugMode) {
-        print("Engine is locked and loaded.");
-      }
+      if (kDebugMode) print("Engine is locked and loaded.");
     } catch (e) {
-      if (kDebugMode) {
-        print("Failed to initialize engine: $e");
-      }
+      if (kDebugMode) print("Failed to initialize engine: $e");
     }
   }
 
@@ -106,17 +94,13 @@ class _MyHomePageState extends State<MyHomePage> {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
-    if (image == null) {
-      if (kDebugMode) {
-        print("No image selected.");
-      }
-      return;
-    }
+    if (image == null) return;
 
     setState(() {
       _isSolving = true;
       _solutions = [];
-      _selectedImage = image;
+      _selectedMove = null;
+      _boardState = [];
     });
 
     try {
@@ -124,24 +108,106 @@ class _MyHomePageState extends State<MyHomePage> {
 
       setState(() {
         _solutions = moves;
-        _isSolving = false;
-      });
-
-      if (kDebugMode) {
-        print("Found ${moves.length} valid moves.");
-        for (var i = 0; i < moves.length && i < 3; i++) {
-          print("${i + 1}. ${moves[i]}");
+        _boardState = _engine.lastParsedBoard; // Grab the board!
+        if (_solutions.isNotEmpty) {
+          _selectedMove = _solutions.first; // Auto-select the best move
         }
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print("Error solving image: $e");
-      }
-
-      setState(() {
         _isSolving = false;
       });
+    } catch (e) {
+      if (kDebugMode) print("Error solving image: $e");
+      setState(() => _isSolving = false);
     }
+  }
+
+  // --- UI BUILDERS ---
+
+  Color _getTileColor(String cellValue, bool isHighlight) {
+    if (isHighlight) return Colors.yellowAccent.shade400; // The selected move
+    if (cellValue.length == 1 && cellValue != '?')
+      return Colors.orange.shade100; // Existing standard tile
+
+    switch (cellValue) {
+      case 'DL':
+        return Colors.green.shade300;
+      case 'TL':
+        return Colors.green.shade700;
+      case 'DW':
+        return Colors.red.shade300;
+      case 'TW':
+        return Colors.red.shade700;
+      default:
+        return Colors.grey.shade200; // EMPTY
+    }
+  }
+
+  Widget _buildBoardGrid() {
+    if (_boardState.isEmpty) {
+      return const Center(child: Text("Load an image to see the board."));
+    }
+
+    return AspectRatio(
+      aspectRatio: 1, // Keep it a perfect square
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        color: Colors.black, // Grid border color
+        child: GridView.builder(
+          physics:
+              const NeverScrollableScrollPhysics(), // Disable internal scroll
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 15,
+            crossAxisSpacing: 1,
+            mainAxisSpacing: 1,
+          ),
+          itemCount: 225,
+          itemBuilder: (context, index) {
+            int row = index ~/ 15;
+            int col = index % 15;
+
+            String cellValue = _boardState[row][col];
+            String displayChar = cellValue;
+            bool isPartOfMove = false;
+
+            // Overlay the selected move
+            if (_selectedMove != null) {
+              int r = _selectedMove!.row;
+              int c = _selectedMove!.col;
+              int len = _selectedMove!.word.length;
+              String dir = _selectedMove!.direction;
+
+              if (dir == 'H' && row == r && col >= c && col < c + len) {
+                isPartOfMove = true;
+                displayChar = _selectedMove!.word[col - c];
+              } else if (dir == 'V' && col == c && row >= r && row < r + len) {
+                isPartOfMove = true;
+                displayChar = _selectedMove!.word[row - r];
+              }
+            }
+
+            // Cleanup display for empty/multiplier squares if no tile is played there
+            if (!isPartOfMove && cellValue.length > 2) {
+              displayChar = ''; // Hide 'EMPTY' text
+            }
+
+            return Container(
+              alignment: Alignment.center,
+              color: _getTileColor(cellValue, isPartOfMove),
+              child: Text(
+                displayChar,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color:
+                      (cellValue == 'TL' || cellValue == 'TW') && !isPartOfMove
+                      ? Colors.white
+                      : Colors.black,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -151,30 +217,83 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
       ),
-      body: Center(
-        child: _isInitializing
-            ? const CircularProgressIndicator()
-            : _solutions.isNotEmpty
-            ? ListView.builder(
-                itemCount: _solutions.length,
-                itemBuilder: (context, index) {
-                  final move = _solutions[index];
-                  return ListTile(
-                    title: Text(move.word),
-                    subtitle: Text(move.score.toString()),
-                  );
-                },
-              )
-            : _isSolving
-            ? const CircularProgressIndicator()
-            : _selectedImage != null
-            ? Image.file(File(_selectedImage!.path))
-            : const Text('No image selected.'),
-      ),
+      body: _isInitializing
+          ? const Center(child: CircularProgressIndicator())
+          : _isSolving
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                // TOP HALF: The Game Board
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: _buildBoardGrid(),
+                ),
+                const Divider(height: 1),
+
+                // BOTTOM HALF: The Scrollable Solutions List
+                Expanded(
+                  child: _solutions.isNotEmpty
+                      ? ListView.separated(
+                          itemCount: _solutions.length,
+                          separatorBuilder: (context, index) =>
+                              const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final move = _solutions[index];
+                            final isSelected = _selectedMove == move;
+
+                            return ListTile(
+                              selected: isSelected,
+                              selectedTileColor: Colors.green.shade50,
+                              leading: CircleAvatar(
+                                backgroundColor: isSelected
+                                    ? Colors.green
+                                    : Colors.grey.shade300,
+                                child: Text(
+                                  '${index + 1}',
+                                  style: TextStyle(
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.black87,
+                                  ),
+                                ),
+                              ),
+                              title: Text(
+                                move.word,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              subtitle: Text(
+                                'Dir: ${move.direction == 'H' ? 'Across' : 'Down'} | Row: ${move.row}, Col: ${move.col}',
+                              ),
+                              trailing: Text(
+                                '${move.score} pts',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Colors.green,
+                                ),
+                              ),
+                              onTap: () {
+                                setState(() {
+                                  _selectedMove = move;
+                                });
+                              },
+                            );
+                          },
+                        )
+                      : const Center(
+                          child: Text(
+                            'No solutions found or no image selected.',
+                          ),
+                        ),
+                ),
+              ],
+            ),
       floatingActionButton: FloatingActionButton(
         onPressed: _openImagePicker,
-        tooltip: 'Increment',
-        child: const Icon(Icons.image),
+        tooltip: 'Pick Screenshot',
+        child: const Icon(Icons.add_a_photo),
       ),
     );
   }
