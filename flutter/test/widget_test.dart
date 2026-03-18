@@ -2,13 +2,13 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wf_solvr/models/dictionary_metadata.dart';
-import 'package:wf_solvr/pages/solver_home_page.dart';
-import 'package:wf_solvr/services/dictionary_assets_repository.dart';
-import 'package:wf_solvr/services/dictionary_selection_store.dart';
-import 'package:wf_solvr/widgets/solver_board_grid.dart';
-import 'package:wf_solvr/widgets/solver_results_list.dart';
-import 'package:wf_solvr/wordfeud.dart';
+import 'package:qy/models/dictionary_metadata.dart';
+import 'package:qy/pages/solver_home_page.dart';
+import 'package:qy/services/dictionary_assets_repository.dart';
+import 'package:qy/services/dictionary_selection_store.dart';
+import 'package:qy/widgets/solver_board_grid.dart';
+import 'package:qy/widgets/solver_results_list.dart';
+import 'package:qy/wordfeud.dart';
 
 void main() {
   testWidgets('SolverBoardGrid shows placeholder when board is empty', (

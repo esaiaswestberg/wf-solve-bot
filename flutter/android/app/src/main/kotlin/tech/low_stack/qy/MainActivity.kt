@@ -1,4 +1,4 @@
-package tech.low_stack.wf_solvr
+package tech.low_stack.qy
 
 import io.flutter.embedding.android.FlutterActivity
 

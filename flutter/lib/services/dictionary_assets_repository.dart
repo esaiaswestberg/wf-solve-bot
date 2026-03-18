@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
-import 'package:wf_solvr/models/dictionary_metadata.dart';
+import 'package:qy/models/dictionary_metadata.dart';
 
 class DictionaryLoadResult {
   DictionaryLoadResult({

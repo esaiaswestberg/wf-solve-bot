@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:wf_solvr/wordfeud.dart';
+import 'package:qy/wordfeud.dart';
 
 class SolverResultsList extends StatelessWidget {
   const SolverResultsList({
