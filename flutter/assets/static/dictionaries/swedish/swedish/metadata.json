@@ -1,5 +1,9 @@
 {
   "title": "Swedish",
   "language": "swedish",
-  "dictionary": "All word forms"
+  "dictionary": "All word forms",
+  "source": {
+    "name": "mrcz/Wordfeud-Player - Github",
+    "url": "https://github.com/mrcz/Wordfeud-Player/blob/0d3db71bdcee6f490556fe1e7219ea2392393de8/ordlista.txt"
+  }
 }

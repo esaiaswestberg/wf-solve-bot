@@ -1,5 +1,9 @@
 {
   "title": "English (International)",
   "language": "english",
-  "dictionary": "SOWPODS"
+  "dictionary": "SOWPODS",
+  "source": {
+    "name": "jesstess/Scrabble - Github",
+    "url": "https://github.com/jesstess/Scrabble/blob/5d4a1e69ad2267126fa8d82bbc34ca936d1f878a/scrabble/sowpods.txt"
+  }
 }
