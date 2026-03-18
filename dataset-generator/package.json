@@ -1,0 +1,20 @@
+{
+  "name": "dataset-generator",
+  "module": "src/app.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "run": "bun run src/app.ts",
+    "run:watch": "bun run --watch src/app.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.5.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "puppeteer": "^24.39.1"
+  }
+}
