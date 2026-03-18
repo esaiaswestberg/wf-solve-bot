@@ -12,6 +12,9 @@ from metrics import confusion_matrix, save_json, task_metrics
 from model import TileClassifier
 
 
+DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "dataset-generator" / "output"
+
+
 @torch.no_grad()
 def run_eval(model, loader, device, schema):
     model.eval()
@@ -51,7 +54,7 @@ def run_eval(model, loader, device, schema):
                 pred_labels[task],
                 labels=list(range(n_classes)),
                 target_names=target_names,
-                zero_division=0,
+                zero_division=0,  # type: ignore[arg-type]
             )
             metrics[task]["confusion_matrix"] = confusion_matrix(
                 true_labels[task], pred_labels[task], n_classes=n_classes
@@ -74,7 +77,7 @@ def main() -> None:
     parser.add_argument(
         "--data-dir",
         type=Path,
-        default=Path("../flutter/assets/static/templates"),
+        default=DEFAULT_DATA_DIR,
     )
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--val-ratio", type=float, default=0.2)

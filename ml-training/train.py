@@ -16,6 +16,9 @@ from metrics import save_json, task_metrics
 from model import TileClassifier
 
 
+DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "dataset-generator" / "output"
+
+
 def set_seed(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -85,7 +88,7 @@ def main() -> None:
     parser.add_argument(
         "--data-dir",
         type=Path,
-        default=Path("./dataset"),
+        default=DEFAULT_DATA_DIR,
         help="Path to template class directories",
     )
     parser.add_argument("--epochs", type=int, default=40)

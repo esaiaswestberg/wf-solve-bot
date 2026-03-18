@@ -10,7 +10,7 @@ This project trains a single shared CNN with three output heads:
 
 Current default dataset path is:
 
-- `../flutter/assets/static/templates/`
+- `../dataset-generator/output/` (equivalent to `./dataset-generator/output/` from repo root)
 
 ## 1) Create and activate a virtual environment
 
@@ -35,7 +35,7 @@ Useful flags:
 
 ```bash
 python train.py \
-  --data-dir ../flutter/assets/static/templates \
+  --data-dir ../dataset-generator/output \
   --epochs 60 \
   --batch-size 32 \
   --val-ratio 0.2 \
@@ -91,7 +91,7 @@ Run one-off inference on an image crop and print top-k predictions per head:
 ```bash
 python predict.py \
   --checkpoint checkpoints/<run-id>/best.pt \
-  --image ../flutter/assets/static/templates/A/<file>.png \
+  --image ../dataset-generator/output/A/<file>.png \
   --top-k 3
 ```
 
@@ -110,7 +110,7 @@ Run inference directly with the exported model artifact:
 python predict_torchscript.py \
   --model exports/tile_classifier.torchscript.pt \
   --labels exports/labels.json \
-  --image ../flutter/assets/static/templates/A/<file>.png \
+  --image ../dataset-generator/output/A/<file>.png \
   --image-size 40 \
   --top-k 3
 ```
