@@ -73,7 +73,8 @@ class _SolverHomePageState extends State<SolverHomePage> {
       await _worker.initialize(
         dictText: initialDictionaryData.dictText,
         csvText: initialDictionaryData.csvText,
-        templateBytes: loadResult.templateBytes,
+        modelOnnxBytes: loadResult.modelOnnxBytes,
+        modelLabelsJson: loadResult.modelLabelsJson,
       );
 
       if (!mounted) {

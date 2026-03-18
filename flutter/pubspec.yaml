@@ -52,6 +52,14 @@ dev_dependencies:
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
+hooks:
+  user_defines:
+    dartcv4:
+      include_modules:
+        - imgcodecs
+        - imgproc
+        - dnn
+
 # The following section is specific to Flutter packages.
 flutter:
 
@@ -65,6 +73,10 @@ flutter:
     # Dictionaries
     - assets/static/dictionaries/english/sowpods/
     - assets/static/dictionaries/swedish/swedish/
+
+    # Classifier model
+    - assets/static/models/tile_classifier.onnx
+    - assets/static/models/labels.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

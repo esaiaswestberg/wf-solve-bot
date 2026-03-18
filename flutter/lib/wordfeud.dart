@@ -1,7 +1,9 @@
-import 'dart:typed_data';
-import 'package:flutter/services.dart' show rootBundle;
-import 'package:opencv_dart/opencv_dart.dart' as cv;
+import 'dart:convert';
+import 'dart:developer' as developer;
+import 'dart:io';
 import 'dart:isolate';
+import 'dart:typed_data';
+import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 // --- DATA MODELS ---
 
@@ -61,73 +63,28 @@ class Trie {
 class WordfeudEngine {
   final Trie _dictionaryTrie = Trie();
   Map<String, int> _pointValues = {};
-  Map<String, List<cv.Mat>> _templates = {};
+  cv.Net? _classifierNet;
+  List<String> _tileTypeLabels = [];
+  List<String> _modifierLabels = [];
+  List<String> _letterLabels = [];
+  static const int _modelInputSize = 40;
 
   List<List<String>> lastParsedBoard = [];
   List<String> lastParsedRack = [];
 
-  bool get isReady => _pointValues.isNotEmpty && _templates.isNotEmpty;
-
-  // --- ASSET LOADING HELPER ---
-
-  /// Reads dictionary, CSV, and image templates directly from Flutter's rootBundle.
-  ///
-  /// [templateAssetPaths] should look like:
-  /// { 'A': ['assets/templates/A/1.png', 'assets/templates/A/2.png'], 'EMPTY': [...] }
-  Future<void> initializeFromAssets({
-    required String dictionaryPath,
-    required String letterValuesPath,
-    required Map<String, List<String>> templateAssetPaths,
-  }) async {
-    // 1. Load Dictionary
-    String dictText = await rootBundle.loadString(dictionaryPath);
-    List<String> dictWords = dictText
-        .split('\n')
-        .where((w) => w.trim().isNotEmpty)
-        .toList();
-
-    // 2. Load Letter Values (CSV)
-    String csvText = await rootBundle.loadString(letterValuesPath);
-    Map<String, int> points = {};
-    for (var line in csvText.split('\n')) {
-      var parts = line.split(',');
-      if (parts.length >= 2) {
-        points[parts[0].trim().toUpperCase()] =
-            int.tryParse(parts[1].trim()) ?? 0;
-      }
-    }
-
-    // 3. Load Templates into OpenCV Mats
-    Map<String, List<cv.Mat>> loadedTemplates = {};
-    for (var entry in templateAssetPaths.entries) {
-      String label = entry.key;
-      List<cv.Mat> mats = [];
-      for (var path in entry.value) {
-        ByteData data = await rootBundle.load(path);
-        Uint8List bytes = data.buffer.asUint8List();
-
-        // Decode bytes directly into a grayscale Mat
-        cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_GRAYSCALE);
-        if (!mat.isEmpty) {
-          mats.add(mat);
-        }
-      }
-      loadedTemplates[label] = mats;
-    }
-
-    // Pass the decoded assets into memory
-    _initialize(
-      dictionaryWords: dictWords,
-      letterValues: points,
-      preloadedTemplates: loadedTemplates,
-    );
-  }
+  bool get isReady =>
+      _pointValues.isNotEmpty &&
+      _classifierNet != null &&
+      _tileTypeLabels.isNotEmpty &&
+      _modifierLabels.isNotEmpty &&
+      _letterLabels.isNotEmpty;
 
   /// Initializes the engine using raw bytes passed from the main thread.
   void initializeFromRawData({
     required String dictionaryText,
     required String letterValuesText,
-    required Map<String, List<Uint8List>> templateBytes,
+    required Uint8List modelOnnxBytes,
+    required String modelLabelsJson,
   }) {
     List<String> dictWords = dictionaryText
         .split('\n')
@@ -143,35 +100,61 @@ class WordfeudEngine {
       }
     }
 
-    Map<String, List<cv.Mat>> loadedTemplates = {};
-    for (var entry in templateBytes.entries) {
-      String label = entry.key;
-      List<cv.Mat> mats = [];
-      for (var bytes in entry.value) {
-        cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_GRAYSCALE);
-        if (!mat.isEmpty) mats.add(mat);
-      }
-      loadedTemplates[label] = mats;
-    }
+    final labelsObject = jsonDecode(modelLabelsJson) as Map<String, dynamic>;
+    final tileTypeToIdx =
+        (labelsObject['tile_type_to_idx'] as Map<String, dynamic>);
+    final modifierToIdx =
+        (labelsObject['modifier_to_idx'] as Map<String, dynamic>);
+    final letterToIdx = (labelsObject['letter_to_idx'] as Map<String, dynamic>);
+
+    final loadedNet = _loadClassifierNetFromOnnxBytes(modelOnnxBytes);
 
     _initialize(
       dictionaryWords: dictWords,
       letterValues: points,
-      preloadedTemplates: loadedTemplates,
+      classifierNet: loadedNet,
+      tileTypeToIdx: tileTypeToIdx,
+      modifierToIdx: modifierToIdx,
+      letterToIdx: letterToIdx,
     );
   }
 
   void _initialize({
     required List<String> dictionaryWords,
     required Map<String, int> letterValues,
-    required Map<String, List<cv.Mat>> preloadedTemplates,
+    required cv.Net classifierNet,
+    required Map<String, dynamic> tileTypeToIdx,
+    required Map<String, dynamic> modifierToIdx,
+    required Map<String, dynamic> letterToIdx,
   }) {
     for (var word in dictionaryWords) {
       _dictionaryTrie.insert(word.trim());
     }
     _pointValues = letterValues;
     _pointValues['?'] = 0; // Wildcard
-    _templates = preloadedTemplates;
+    _classifierNet = classifierNet;
+    _tileTypeLabels = _indexToLabel(tileTypeToIdx);
+    _modifierLabels = _indexToLabel(modifierToIdx);
+    _letterLabels = _indexToLabel(letterToIdx);
+  }
+
+  List<String> _indexToLabel(Map<String, dynamic> labelToIndex) {
+    final maxIndex = labelToIndex.values
+        .map((value) => value as int)
+        .reduce((a, b) => a > b ? a : b);
+    final labels = List<String>.filled(maxIndex + 1, '?');
+    labelToIndex.forEach((label, index) {
+      labels[index as int] = label;
+    });
+    return labels;
+  }
+
+  cv.Net _loadClassifierNetFromOnnxBytes(Uint8List modelOnnxBytes) {
+    final modelFile = File(
+      '${Directory.systemTemp.path}/wf_tile_classifier.onnx',
+    );
+    modelFile.writeAsBytesSync(modelOnnxBytes, flush: true);
+    return cv.Net.fromOnnx(modelFile.path);
   }
 
   // --- MAIN ENTRY POINT ---
@@ -261,15 +244,21 @@ class WordfeudEngine {
       gridSize,
       (_) => List.filled(gridSize, ''),
     );
+    final cells = <cv.Mat>[];
 
     for (int r = 0; r < gridSize; r++) {
       for (int c = 0; c < gridSize; c++) {
         cv.Mat cell = flatGray.region(
           cv.Rect(c * cellSize, r * cellSize, cellSize, cellSize),
         );
-        parsedBoard[r][c] = _predictCell(cell);
-        cell.dispose();
+        cells.add(cell);
       }
+    }
+
+    final predictions = _predictCellsBatch(cells);
+    for (int i = 0; i < predictions.length; i++) {
+      parsedBoard[i ~/ gridSize][i % gridSize] = predictions[i];
+      cells[i].dispose();
     }
 
     gray.dispose();
@@ -379,16 +368,12 @@ class WordfeudEngine {
     }
 
     // 5. Classify the Rack Tiles
-    List<String> parsedRack = [];
-    for (var tile in tiles) {
-      String bestMatch = _predictCell(tile);
-
-      if (bestMatch == 'EMPTY') {
-        parsedRack.add("?");
-      } else {
-        parsedRack.add(bestMatch);
-      }
-      tile.dispose(); // Free memory
+    final predictions = _predictCellsBatch(tiles);
+    final parsedRack = <String>[];
+    for (int i = 0; i < predictions.length; i++) {
+      final prediction = predictions[i];
+      parsedRack.add(prediction == 'EMPTY' ? '?' : prediction);
+      tiles[i].dispose();
     }
 
     // Cleanup Mats
@@ -401,27 +386,128 @@ class WordfeudEngine {
     return parsedRack;
   }
 
-  String _predictCell(cv.Mat cell) {
-    String bestMatch = "?";
-    double highestConfidence = -1.0;
+  List<String> _predictCellsBatch(List<cv.Mat> cells) {
+    if (cells.isEmpty) {
+      return [];
+    }
+    final inferenceStopwatch = Stopwatch()..start();
 
-    _templates.forEach((label, tplList) {
-      for (var tpl in tplList) {
-        cv.Mat resizedTpl = cv.resize(tpl, (cell.cols, cell.rows));
+    final net = _classifierNet;
+    if (net == null) {
+      throw Exception('Classifier model has not been loaded.');
+    }
 
-        cv.Mat result = cv.matchTemplate(cell, resizedTpl, cv.TM_CCOEFF_NORMED);
-        var minMaxLocResult = cv.minMaxLoc(result);
+    final normalizedCells = <cv.Mat>[];
+    for (final cell in cells) {
+      final resized = cv.resize(cell, (_modelInputSize, _modelInputSize));
+      final normalized = resized.convertTo(
+        cv.MatType.CV_32FC1,
+        alpha: 1.0 / 255.0,
+      );
+      resized.dispose();
+      normalizedCells.add(normalized);
+    }
 
-        if (minMaxLocResult.$2 > highestConfidence) {
-          highestConfidence = minMaxLocResult.$2;
-          bestMatch = label;
-        }
-        resizedTpl.dispose();
-        result.dispose();
+    final vec = cv.VecMat.fromList(normalizedCells);
+    final blob = cv.blobFromImages(
+      vec,
+      size: (_modelInputSize, _modelInputSize),
+      ddepth: cv.MatType.CV_32F,
+    );
+    vec.dispose();
+    for (final normalizedCell in normalizedCells) {
+      normalizedCell.dispose();
+    }
+
+    net.setInput(blob);
+    final outputs = net.forwardLayers(['tile_type', 'modifier', 'letter']);
+    blob.dispose();
+
+    final tileLogits = _reshapeLogits(
+      outputs[0],
+      batchSize: cells.length,
+      classCount: _tileTypeLabels.length,
+      headName: 'tile_type',
+    );
+    final modifierLogits = _reshapeLogits(
+      outputs[1],
+      batchSize: cells.length,
+      classCount: _modifierLabels.length,
+      headName: 'modifier',
+    );
+    final letterLogits = _reshapeLogits(
+      outputs[2],
+      batchSize: cells.length,
+      classCount: _letterLabels.length,
+      headName: 'letter',
+    );
+    outputs.dispose();
+
+    final predictions = List<String>.filled(cells.length, 'EMPTY');
+    for (int i = 0; i < cells.length; i++) {
+      final tileType = _tileTypeLabels[_argmax(tileLogits[i])];
+      if (tileType == 'EMPTY') {
+        predictions[i] = 'EMPTY';
+      } else if (tileType == 'MODIFIER') {
+        predictions[i] = _modifierLabels[_argmax(modifierLogits[i])];
+      } else {
+        final letter = _letterLabels[_argmax(letterLogits[i])];
+        predictions[i] = letter == 'WILDCARD' ? '?' : letter;
       }
-    });
+    }
 
-    return bestMatch;
+    inferenceStopwatch.stop();
+    developer.log(
+      'Tile inference: ${cells.length} cells in '
+      '${inferenceStopwatch.elapsedMilliseconds}ms',
+      name: 'WordfeudEngine',
+    );
+
+    return predictions;
+  }
+
+  List<List<double>> _reshapeLogits(
+    cv.Mat output, {
+    required int batchSize,
+    required int classCount,
+    required String headName,
+  }) {
+    final rawBytes = output.data;
+    if (rawBytes.lengthInBytes % Float32List.bytesPerElement != 0) {
+      throw Exception('Unexpected output byte length for $headName head.');
+    }
+
+    final floatCount = rawBytes.lengthInBytes ~/ Float32List.bytesPerElement;
+    final floatView = rawBytes.buffer.asFloat32List(
+      rawBytes.offsetInBytes,
+      floatCount,
+    );
+    final logits = floatView.toList(growable: false);
+    final expected = batchSize * classCount;
+    if (logits.length != expected) {
+      throw Exception(
+        'Unexpected output shape for $headName head: expected $expected '
+        'values but got ${logits.length}.',
+      );
+    }
+
+    return List<List<double>>.generate(
+      batchSize,
+      (i) => logits.sublist(i * classCount, (i + 1) * classCount),
+      growable: false,
+    );
+  }
+
+  int _argmax(List<double> values) {
+    int bestIndex = 0;
+    double bestValue = values[0];
+    for (int i = 1; i < values.length; i++) {
+      if (values[i] > bestValue) {
+        bestValue = values[i];
+        bestIndex = i;
+      }
+    }
+    return bestIndex;
   }
 
   cv.VecPoint _orderPoints(cv.VecPoint pts) {
@@ -858,7 +944,8 @@ abstract class SolverWorker {
   Future<void> initialize({
     required String dictText,
     required String csvText,
-    required Map<String, List<Uint8List>> templateBytes,
+    required Uint8List modelOnnxBytes,
+    required String modelLabelsJson,
   });
   Future<SolveResponse> solve(String imagePath);
   Future<void> changeDictionary(String dictText, String csvText);
@@ -875,7 +962,8 @@ class WordfeudWorker implements SolverWorker {
   Future<void> initialize({
     required String dictText,
     required String csvText,
-    required Map<String, List<Uint8List>> templateBytes,
+    required Uint8List modelOnnxBytes,
+    required String modelLabelsJson,
   }) async {
     // 1. Spawn the background thread
     await Isolate.spawn(_isolateEntry, _mainReceivePort.sendPort);
@@ -889,7 +977,8 @@ class WordfeudWorker implements SolverWorker {
       'type': 'INIT',
       'dictText': dictText,
       'csvText': csvText,
-      'templateBytes': templateBytes,
+      'modelOnnxBytes': modelOnnxBytes,
+      'modelLabelsJson': modelLabelsJson,
     });
 
     // 4. Wait for it to finish building the Trie and OpenCV Mats
@@ -932,7 +1021,8 @@ class WordfeudWorker implements SolverWorker {
           engine.initializeFromRawData(
             dictionaryText: message['dictText'],
             letterValuesText: message['csvText'],
-            templateBytes: message['templateBytes'],
+            modelOnnxBytes: message['modelOnnxBytes'],
+            modelLabelsJson: message['modelLabelsJson'],
           );
           mainSendPort.send('READY');
         } else if (message['type'] == 'CHANGE_DICT') {

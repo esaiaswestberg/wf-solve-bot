@@ -236,7 +236,8 @@ class FakeDictionaryAssetsRepository implements DictionaryAssetsRepository {
   Future<DictionaryLoadResult> load() async {
     return DictionaryLoadResult(
       dictionaries: [englishDictionary, swedishDictionary],
-      templateBytes: const {},
+      modelOnnxBytes: Uint8List(0),
+      modelLabelsJson: '{}',
     );
   }
 
@@ -251,7 +252,6 @@ class FakeDictionaryAssetsRepository implements DictionaryAssetsRepository {
 class FakeDictionarySelectionStore implements DictionarySelectionStore {
   FakeDictionarySelectionStore({this.selectedId});
 
-  @override
   String? selectedId;
 
   final List<String> savedIds = [];
@@ -290,7 +290,8 @@ class FakeSolverWorker implements SolverWorker {
   Future<void> initialize({
     required String dictText,
     required String csvText,
-    required Map<String, List<Uint8List>> templateBytes,
+    required Uint8List modelOnnxBytes,
+    required String modelLabelsJson,
   }) async {
     initializedDictText = dictText;
     isReady = true;

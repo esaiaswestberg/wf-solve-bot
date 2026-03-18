@@ -80,6 +80,8 @@ def main() -> None:
             output_names=["tile_type", "modifier", "letter"],
             dynamic_axes={"image": {0: "batch"}},
             opset_version=17,
+            dynamo=False,
+            external_data=False,
         )
         print(f"Saved ONNX model to: {onnx_path}")
 

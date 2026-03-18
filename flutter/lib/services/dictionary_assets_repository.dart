@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:wf_solvr/models/dictionary_metadata.dart';
@@ -7,11 +6,13 @@ import 'package:wf_solvr/models/dictionary_metadata.dart';
 class DictionaryLoadResult {
   DictionaryLoadResult({
     required this.dictionaries,
-    required this.templateBytes,
+    required this.modelOnnxBytes,
+    required this.modelLabelsJson,
   });
 
   final List<DictionaryMetadata> dictionaries;
-  final Map<String, List<Uint8List>> templateBytes;
+  final Uint8List modelOnnxBytes;
+  final String modelLabelsJson;
 }
 
 class DictionaryData {
@@ -35,7 +36,6 @@ class RootBundleDictionaryAssetsRepository
 
   @override
   Future<DictionaryLoadResult> load() async {
-    final templatePaths = await _buildTemplateMapDynamically();
     final manifest = await AssetManifest.loadFromAssetBundle(_assetBundle);
     final metaAssets = manifest.listAssets().where(
       (path) =>
@@ -60,18 +60,18 @@ class RootBundleDictionaryAssetsRepository
       );
     }
 
-    final templateBytes = <String, List<Uint8List>>{};
-    for (final entry in templatePaths.entries) {
-      templateBytes[entry.key] = [];
-      for (final path in entry.value) {
-        final data = await _assetBundle.load(path);
-        templateBytes[entry.key]!.add(data.buffer.asUint8List());
-      }
-    }
+    final modelData = await _assetBundle.load(
+      'assets/static/models/tile_classifier.onnx',
+    );
+    final modelOnnxBytes = modelData.buffer.asUint8List();
+    final modelLabelsJson = await _assetBundle.loadString(
+      'assets/static/models/labels.json',
+    );
 
     return DictionaryLoadResult(
       dictionaries: loadedDictionaries,
-      templateBytes: templateBytes,
+      modelOnnxBytes: modelOnnxBytes,
+      modelLabelsJson: modelLabelsJson,
     );
   }
 
@@ -82,27 +82,6 @@ class RootBundleDictionaryAssetsRepository
     final dictText = await _assetBundle.loadString(dictionary.dictPath);
     final csvText = await _assetBundle.loadString(dictionary.csvPath);
     return DictionaryData(dictText: dictText, csvText: csvText);
-  }
-
-  Future<Map<String, List<String>>> _buildTemplateMapDynamically() async {
-    final manifest = await AssetManifest.loadFromAssetBundle(_assetBundle);
-    final allAssets = manifest.listAssets();
-    final templatePaths = <String, List<String>>{};
-
-    final templateAssets = allAssets.where(
-      (path) => path.startsWith('assets/static/templates/'),
-    );
-
-    for (final path in templateAssets) {
-      final parts = path.split('/');
-      if (parts.length >= 2) {
-        final label = parts[parts.length - 2];
-        templatePaths.putIfAbsent(label, () => []);
-        templatePaths[label]!.add(path);
-      }
-    }
-
-    return templatePaths;
   }
 }
 

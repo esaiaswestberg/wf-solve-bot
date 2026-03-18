@@ -4,3 +4,4 @@ numpy>=1.26.0
 Pillow>=10.0.0
 scikit-learn>=1.4.0
 tqdm>=4.66.0
+onnx>=1.15.0
