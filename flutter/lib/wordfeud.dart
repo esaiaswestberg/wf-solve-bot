@@ -936,7 +936,9 @@ class WordfeudEngine {
 class SolveResponse {
   final List<Move> moves;
   final List<List<String>> board;
-  SolveResponse(this.moves, this.board);
+  final List<String> rack;
+
+  SolveResponse(this.moves, this.board, this.rack);
 }
 
 abstract class SolverWorker {
@@ -1040,10 +1042,11 @@ class WordfeudWorker implements SolverWorker {
           try {
             final moves = engine.solveFromImage(path);
             final board = engine.lastParsedBoard;
-            replyTo.send(SolveResponse(moves, board));
+            final rack = engine.lastParsedRack;
+            replyTo.send(SolveResponse(moves, board, rack));
           } catch (e) {
             print("Background Isolate Error: $e");
-            replyTo.send(SolveResponse([], [])); // Return empty on fail
+            replyTo.send(SolveResponse([], [], [])); // Return empty on fail
           }
         }
       }

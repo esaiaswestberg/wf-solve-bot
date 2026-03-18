@@ -35,6 +35,7 @@ class _SolverHomePageState extends State<SolverHomePage> {
   bool _isSolving = false;
   List<Move> _solutions = [];
   List<List<String>> _boardState = [];
+  List<String> _rackState = [];
   Move? _selectedMove;
   List<DictionaryMetadata> _availableDictionaries = [];
   DictionaryMetadata? _activeDictionary;
@@ -106,6 +107,7 @@ class _SolverHomePageState extends State<SolverHomePage> {
       _isChangingDictionary = true;
       _solutions = [];
       _selectedMove = null;
+      _rackState = [];
     });
 
     try {
@@ -136,6 +138,7 @@ class _SolverHomePageState extends State<SolverHomePage> {
         setState(() {
           _solutions = response.moves;
           _boardState = response.board;
+          _rackState = response.rack;
           if (_solutions.isNotEmpty) {
             _selectedMove = _solutions.first;
           }
@@ -172,6 +175,7 @@ class _SolverHomePageState extends State<SolverHomePage> {
       _isSolving = true;
       _solutions = [];
       _boardState = [];
+      _rackState = [];
       _selectedMove = null;
       _selectedImage = image;
     });
@@ -185,6 +189,7 @@ class _SolverHomePageState extends State<SolverHomePage> {
       setState(() {
         _solutions = response.moves;
         _boardState = response.board;
+        _rackState = response.rack;
         if (_solutions.isNotEmpty) {
           _selectedMove = _solutions.first;
         }
@@ -277,9 +282,15 @@ class _SolverHomePageState extends State<SolverHomePage> {
               children: [
                 Padding(
                   padding: const EdgeInsets.all(8),
-                  child: SolverBoardGrid(
-                    boardState: _boardState,
-                    selectedMove: _selectedMove,
+                  child: Column(
+                    children: [
+                      SolverBoardGrid(
+                        boardState: _boardState,
+                        selectedMove: _selectedMove,
+                      ),
+                      const SizedBox(height: 8),
+                      _buildRackSection(),
+                    ],
                   ),
                 ),
                 const Divider(height: 1),
@@ -300,6 +311,54 @@ class _SolverHomePageState extends State<SolverHomePage> {
         onPressed: _openImagePicker,
         tooltip: 'Pick Screenshot',
         child: const Icon(Icons.add_a_photo),
+      ),
+    );
+  }
+
+  Widget _buildRackSection() {
+    if (_rackState.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Colors.brown.shade100,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Row(
+            children: _rackState
+                .map(
+                  (tile) => Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: _buildRackTile(tile),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRackTile(String tile) {
+    return Container(
+      height: 48,
+      decoration: BoxDecoration(
+        color: tile == '?' ? Colors.brown.shade200 : Colors.white,
+        border: Border.all(color: Colors.brown.shade300),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        tile,
+        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
       ),
     );
   }

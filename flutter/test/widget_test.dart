@@ -299,6 +299,6 @@ class FakeSolverWorker implements SolverWorker {
 
   @override
   Future<SolveResponse> solve(String imagePath) async {
-    return SolveResponse([], []);
+    return SolveResponse([], [], []);
   }
 }
