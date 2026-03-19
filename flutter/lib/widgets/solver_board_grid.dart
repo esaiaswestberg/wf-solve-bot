@@ -13,6 +13,8 @@ class SolverBoardGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     if (boardState.isEmpty) {
       return const Center(child: Text('Load an image to see the board.'));
     }
@@ -21,7 +23,7 @@ class SolverBoardGrid extends StatelessWidget {
       aspectRatio: 1,
       child: Container(
         padding: const EdgeInsets.all(4),
-        color: Colors.black,
+        color: colorScheme.outline,
         child: GridView.builder(
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -49,7 +51,7 @@ class SolverBoardGrid extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                   color: overlay.isWildcardTile
-                      ? Colors.red
+                      ? colorScheme.error
                       : (cellValue == 'TL' || cellValue == 'TW') &&
                             !overlay.isPartOfMove
                       ? Colors.white

@@ -1,0 +1,27 @@
+<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg" fill="none">
+ <defs>
+  <linearGradient id="tile" x1="0.05224" y1="0.01493" x2="0.93284" y2="0.97761">
+   <stop stop-color="#F2FFF7"/>
+   <stop offset="1" stop-color="#CDEEDC"/>
+  </linearGradient>
+ </defs>
+ <g>
+  <title>Layer 1</title>
+  <g opacity="0.25" stroke-linecap="round" stroke="#B9E7CD" stroke-width="10" id="svg_2">
+   <path d="m140.52778,96l0,320" id="svg_3"/>
+   <path d="m217.05556,96l0,320" id="svg_4"/>
+   <path d="m297.05556,96l0,320" id="svg_5"/>
+   <path d="m370.80556,96l0,320" id="svg_6"/>
+   <path d="m96,140.52778l320,0" id="svg_7"/>
+   <path d="m96,217.05556l320,0" id="svg_8"/>
+   <path d="m96,297.05556l320,0" id="svg_9"/>
+   <path d="m96,370.80556l320,0" id="svg_10"/>
+  </g>
+  <g id="svg_11">
+   <rect x="122" y="122" width="268" height="268" rx="44" fill="url(#tile)" id="svg_12"/>
+   <rect x="122" y="122" width="268" height="268" rx="44" stroke="#7FC8A0" stroke-width="8" id="svg_13"/>
+  </g>
+  <path d="m242.16898,160.68421c-49.8,0 -86.5,35.5 -86.5,84.8c0,49.4 36.8,85.4 88.2,85.4c14,0 27.1,-2.9 38.5,-8.3l30.7,31.6c7.4,7.6 19.4,7.8 27,0.4c7.6,-7.4 7.8,-19.4 0.4,-27l-28.3,-29c12.4,-14.7 19.5,-33.1 19.5,-53.4c0,-49 -36.2,-84.5 -89.5,-84.5zm0.3,35.4c29.9,0 49.7,20.8 49.7,49.2c0,28.3 -19.8,49.2 -49.7,49.2c-29.8,0 -47.2,-21 -47.2,-49.2c0,-28.2 17.4,-49.2 47.2,-49.2z" fill="#0C3D2B" id="svg_14"/>
+  <text x="313.19687" y="307.39791" fill="#176447" font-family="Georgia, 'Times New Roman', serif" font-size="66" font-weight="700" id="svg_15">y</text>
+ </g>
+</svg>

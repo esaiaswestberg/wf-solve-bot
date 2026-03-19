@@ -6,13 +6,20 @@ class WordfeudSolverApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = ColorScheme.fromSeed(seedColor: Colors.green);
+
     return MaterialApp(
       title: 'Qy',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
+      theme: ThemeData(colorScheme: colorScheme, useMaterial3: true),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.green,
+          brightness: Brightness.dark,
+        ),
         useMaterial3: true,
       ),
-      home: const SolverHomePage(title: 'Qy'),
+      themeMode: ThemeMode.system,
+      home: const SolverHomePage(),
     );
   }
 }

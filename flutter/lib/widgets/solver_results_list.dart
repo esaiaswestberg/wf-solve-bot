@@ -15,6 +15,8 @@ class SolverResultsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     if (solutions.isEmpty) {
       return const Center(
         child: Text('No solutions found or no image selected.'),
@@ -30,13 +32,17 @@ class SolverResultsList extends StatelessWidget {
 
         return ListTile(
           selected: isSelected,
-          selectedTileColor: Colors.green.shade50,
+          selectedTileColor: colorScheme.primaryContainer,
           leading: CircleAvatar(
-            backgroundColor: isSelected ? Colors.green : Colors.grey.shade300,
+            backgroundColor: isSelected
+                ? colorScheme.primary
+                : colorScheme.surfaceContainerHighest,
             child: Text(
               '${index + 1}',
               style: TextStyle(
-                color: isSelected ? Colors.white : Colors.black87,
+                color: isSelected
+                    ? colorScheme.onPrimary
+                    : colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -47,7 +53,9 @@ class SolverResultsList extends StatelessWidget {
                     char == char.toLowerCase() && char != char.toUpperCase();
                 return TextSpan(
                   text: char.toUpperCase(),
-                  style: TextStyle(color: isWildcard ? Colors.red : null),
+                  style: TextStyle(
+                    color: isWildcard ? colorScheme.error : null,
+                  ),
                 );
               }).toList(),
             ),
@@ -58,10 +66,10 @@ class SolverResultsList extends StatelessWidget {
           ),
           trailing: Text(
             '${move.score} pts',
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 16,
-              color: Colors.green,
+              color: colorScheme.primary,
             ),
           ),
           onTap: () => onMoveSelected(move),

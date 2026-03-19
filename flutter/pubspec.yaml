@@ -1,5 +1,5 @@
 name: qy
-description: "A fast Wordfeud solver that reads your board from a screenshot and suggests the best possible moves."
+description: 'A fast Wordfeud solver that reads your board from a screenshot and suggests the best possible moves.'
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -38,6 +38,7 @@ dependencies:
   image_picker: ^1.2.1
   opencv_dart: ^2.2.1+4
   shared_preferences: ^2.5.3
+  flutter_svg: ^2.2.4
 
 dev_dependencies:
   flutter_test:
@@ -63,7 +64,6 @@ hooks:
 
 # The following section is specific to Flutter packages.
 flutter:
-
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
@@ -78,6 +78,9 @@ flutter:
     # Classifier model
     - assets/static/models/tile_classifier.onnx
     - assets/static/models/labels.json
+
+    # Logo
+    - assets/logo/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -109,4 +112,6 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: assets/logo/generated/qy-icon-1024.png
+  adaptive_icon_background: '#F6FFF9'
+  adaptive_icon_foreground: assets/logo/generated/qy-icon-1024.png
   remove_alpha_ios: true

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qy/models/dictionary_metadata.dart';
 import 'package:qy/services/dictionary_assets_repository.dart';
@@ -10,13 +11,11 @@ import 'package:qy/wordfeud.dart';
 class SolverHomePage extends StatefulWidget {
   const SolverHomePage({
     super.key,
-    required this.title,
     this.worker,
     this.assetsRepository,
     this.selectionStore,
   });
 
-  final String title;
   final SolverWorker? worker;
   final DictionaryAssetsRepository? assetsRepository;
   final DictionarySelectionStore? selectionStore;
@@ -209,7 +208,10 @@ class _SolverHomePageState extends State<SolverHomePage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
+        title: SvgPicture.asset(
+          'assets/logo/qy-icon-transparent-bg.svg',
+          height: 50,
+        ),
         actions: [
           if (_isChangingDictionary)
             const Padding(
@@ -218,10 +220,7 @@ class _SolverHomePageState extends State<SolverHomePage> {
                 child: SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               ),
             )
@@ -231,7 +230,10 @@ class _SolverHomePageState extends State<SolverHomePage> {
               padding: const EdgeInsets.only(right: 8),
               child: DropdownButton<DictionaryMetadata>(
                 value: _activeDictionary,
-                icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
+                icon: Icon(
+                  Icons.arrow_drop_down,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
                 dropdownColor: Theme.of(context).colorScheme.surface,
                 underline: const SizedBox(),
                 onChanged: _handleDictionaryChange,
@@ -240,9 +242,9 @@ class _SolverHomePageState extends State<SolverHomePage> {
                     return Center(
                       child: Text(
                         dictionary.title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                     );
@@ -263,7 +265,9 @@ class _SolverHomePageState extends State<SolverHomePage> {
                           dictionary.dictionaryName,
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey.shade600,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -327,7 +331,7 @@ class _SolverHomePageState extends State<SolverHomePage> {
           width: double.infinity,
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            color: Colors.brown.shade100,
+            color: Theme.of(context).colorScheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(6),
           ),
           child: Row(
@@ -348,17 +352,25 @@ class _SolverHomePageState extends State<SolverHomePage> {
   }
 
   Widget _buildRackTile(String tile) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       height: 48,
       decoration: BoxDecoration(
-        color: tile == '' ? Colors.brown.shade200 : Colors.white,
-        border: Border.all(color: Colors.brown.shade300),
+        color: tile == ''
+            ? colorScheme.surfaceContainerHighest
+            : colorScheme.surface,
+        border: Border.all(color: colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(4),
       ),
       alignment: Alignment.center,
       child: Text(
         tile == '?' ? '' : tile,
-        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+        style: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
+          color: colorScheme.onSurface,
+        ),
       ),
     );
   }
