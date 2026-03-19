@@ -21,6 +21,12 @@ body {
     position: relative;
     background-color: var(--dark-background);
     margin: 0;
+    width: 100vw;
+    height: 100vh;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .grid {
@@ -95,6 +101,36 @@ body {
         background-color: #2a2e33;
     }
 
+    > span.rack::after {
+        content: '';
+        position: absolute;
+
+        --border-width: 5px;
+
+        top: calc(var(--border-width) * -1);
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(300% + 5px * 2 + var(--border-width) * 2);
+        height: calc(100% + var(--border-width) * 2);
+        z-index: -1;
+
+        background-color: #2a2e33;
+        border-radius: 6px;
+    }
+
+    > span.rack.right::after {
+        left: auto;
+        right: calc(var(--border-width) * -1);
+        width: calc(200% + 5px + var(--border-width) * 2);
+        transform: none;
+    }
+
+    > span.rack.left::after {
+        left: calc(var(--border-width) * -1);
+        width: calc(200% + 5px + var(--border-width) * 2);
+        transform: none;
+    }
+
     > span.dw.empty,
     > span.tw.empty,
     > span.dl.empty,
@@ -146,5 +182,9 @@ body {
         content: 'TL';
         background-color: #1f6190;
         color: #c0d3e0;
+    }
+
+    > span.hidden {
+        opacity: 0;
     }
 }

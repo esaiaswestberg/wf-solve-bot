@@ -1,70 +1,79 @@
-import puppeteer from "puppeteer";
+import puppeteer from 'puppeteer'
 import { readFile, mkdir } from 'fs/promises'
 
+// Set up Puppeteer browser and page
 const browser = await puppeteer.launch({ headless: true })
 const page = await browser.newPage()
-const content = await readFile('src/content.html');
+
+// Load contents
+const content = await readFile('src/content.html')
 const style = await readFile('src/style.css')
 const script = await readFile('src/script.js')
-const htmlContent = content.toString()
-    .replace(
-        `<link rel="stylesheet" href="./style.css">`,
-        `<style>\n${style.toString()}\n</style>`
+
+// Set page html content with styles and scripts
+const htmlContent = content.toString().replace(`<link rel="stylesheet" href="./style.css">`, `<style>\n${style.toString()}\n</style>`).replace(`<script src="./script.js"></script>`, `<script>${script.toString()}</script>`)
+await page.setContent(htmlContent)
+
+const generateTileDataset = async (value: string, onBoard: boolean, onRack: boolean) => {
+  // Create the value directory
+  const currentValueDirPath = `./output/${value == ' ' ? 'EMPTY' : value}/`
+  await mkdir(currentValueDirPath, { recursive: true })
+  console.log(`Generating versions of "${value}"`)
+
+  const ITERATION_COUNT = 1000
+  for (let i = 0; i < ITERATION_COUNT; i++) {
+    // Randomize grid scale
+    const scale = Math.random() + 0.5
+    const gridElement = await page.$('.grid')
+    await page.evaluate(
+      (gridElement, scale) => {
+        gridElement.style.transform = `scale(${scale})`
+      },
+      gridElement,
+      scale
     )
-    .replace(
-        `<script src="./script.js"></script>`,
-        `<script>${script.toString()}</script>`
+
+    // Randomize surrounding tile states
+    await page.evaluate(
+      (value, onBoard, onRack) => {
+        // @ts-ignore - This is a function within the website
+        updateVisualization(value, onBoard, onRack)
+      },
+      value,
+      onBoard,
+      onRack
     )
 
-await page.setContent(htmlContent);
+    // Wiggle camera position
+    const cameraElement = await page.$('.camera')
+    await page.evaluate(
+      (cameraElement, scale) => {
+        const deltaX = (Math.round(Math.random() * 26) - 13) * scale
+        const deltaY = (Math.round(Math.random() * 26) - 13) * scale
+        cameraElement.style.transform = `translate(${deltaX}px, ${deltaY}px)`
+      },
+      cameraElement,
+      scale
+    )
 
-const letters = [...('ABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ? '.split('')), 'TW', 'DW', 'TL', 'DL']
-for (const letter of letters) {
-    // Create the letter directory
-    const letterDirPath = `./output/${letter == ' ' ? 'EMPTY' : letter}/`
-    await mkdir(letterDirPath, { recursive: true })
-    console.log(`Generating versions of "${letter}"`)
+    await cameraElement?.screenshot({ path: `${currentValueDirPath}${Bun.randomUUIDv7()}.png` })
+    console.log(`Iteration ${i + 1} / ${ITERATION_COUNT} for "${value}"`)
+  }
+}
 
-    const ITERATION_COUNT = 100;
-    for (let i = 0; i < ITERATION_COUNT; i++) {
-        // Randomize surrounding tile states
-        await page.evaluate(() => {
-            randomizeSurroundingTiles()
-        })
+// Generate board only tiles
+for (const value of ['TW', 'DW', 'TL', 'DL']) {
+  await generateTileDataset(value, true, false)
+}
 
-        // Set the center tile content
-        const pcc = await page.$(".pcc")
-        await page.evaluate((pcc, letter) => {
-            // Set letter value
-            let symbol = letter
-            if (letter == '?' || letter.length == 2) symbol = ''
+// Generate rack only tiles
+for (const value of ['?']) {
+  await generateTileDataset(value, false, true)
+}
 
-            pcc.querySelector('.letter').innerHTML = symbol;
-
-            // Set score value and opacity
-            let score = Math.round(Math.random() * 10)
-            if (letter.length > 1 || letter == '?' || letter == ' ') score = 0;
-
-            pcc.querySelector('.score').innerHTML = score;
-            pcc.querySelector('.score').style.opacity = score > 0 ? 1 : 0;
-
-            // Set special values
-            pcc.classList.remove('dl', 'tl', 'dw', 'tw', 'empty')
-            if (letter.length == 2) pcc.classList.add(letter.toLowerCase(), 'empty')
-            if (letter == ' ') pcc.classList.add('empty')
-        }, pcc, letter);
-
-        // Wiggle camera position
-        const element = await page.$(".camera");
-        await page.evaluate((el) => {
-            const deltaX = Math.round(Math.random() * 26) - 13
-            const deltaY = Math.round(Math.random() * 26) - 13
-            el.style.transform = `translate(${deltaX}px, ${deltaY}px)`
-        }, element);
-
-        await element?.screenshot({ path: `${letterDirPath}${Bun.randomUUIDv7()}.png` })
-        console.log(`Iteration ${i + 1} / ${ITERATION_COUNT} for "${letter}"`)
-    }
+// Generate board and rack tiles
+for (const value of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Å', 'Ä', 'Ö', 'EMPTY']) {
+  await generateTileDataset(value, true, true)
 }
 
 await browser.close()
