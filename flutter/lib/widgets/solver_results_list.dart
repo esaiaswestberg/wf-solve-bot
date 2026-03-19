@@ -40,8 +40,17 @@ class SolverResultsList extends StatelessWidget {
               ),
             ),
           ),
-          title: Text(
-            move.word,
+          title: Text.rich(
+            TextSpan(
+              children: move.word.split('').map((char) {
+                final isWildcard =
+                    char == char.toLowerCase() && char != char.toUpperCase();
+                return TextSpan(
+                  text: char.toUpperCase(),
+                  style: TextStyle(color: isWildcard ? Colors.red : null),
+                );
+              }).toList(),
+            ),
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           subtitle: Text(

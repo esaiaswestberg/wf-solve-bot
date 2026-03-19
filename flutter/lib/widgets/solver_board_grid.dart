@@ -48,9 +48,10 @@ class SolverBoardGrid extends StatelessWidget {
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
-                  color:
-                      (cellValue == 'TL' || cellValue == 'TW') &&
-                          !overlay.isPartOfMove
+                  color: overlay.isWildcardTile
+                      ? Colors.red
+                      : (cellValue == 'TL' || cellValue == 'TW') &&
+                            !overlay.isPartOfMove
                       ? Colors.white
                       : Colors.black,
                 ),
@@ -69,6 +70,7 @@ class SolverBoardGrid extends StatelessWidget {
   }) {
     var displayChar = cellValue;
     var isPartOfMove = false;
+    var isWildcardTile = false;
 
     if (selectedMove != null) {
       final move = selectedMove!;
@@ -89,13 +91,24 @@ class SolverBoardGrid extends StatelessWidget {
         isPartOfMove = true;
         displayChar = move.word[row - moveRow];
       }
+
+      if (isPartOfMove &&
+          displayChar == displayChar.toLowerCase() &&
+          displayChar != displayChar.toUpperCase()) {
+        isWildcardTile = true;
+        displayChar = displayChar.toUpperCase();
+      }
     }
 
     if (!isPartOfMove && cellValue.length > 2) {
       displayChar = '';
     }
 
-    return _CellOverlay(displayChar: displayChar, isPartOfMove: isPartOfMove);
+    return _CellOverlay(
+      displayChar: displayChar,
+      isPartOfMove: isPartOfMove,
+      isWildcardTile: isWildcardTile,
+    );
   }
 
   Color _getTileColor(String cellValue, bool isHighlight) {
@@ -122,8 +135,13 @@ class SolverBoardGrid extends StatelessWidget {
 }
 
 class _CellOverlay {
-  const _CellOverlay({required this.displayChar, required this.isPartOfMove});
+  const _CellOverlay({
+    required this.displayChar,
+    required this.isPartOfMove,
+    required this.isWildcardTile,
+  });
 
   final String displayChar;
   final bool isPartOfMove;
+  final bool isWildcardTile;
 }
