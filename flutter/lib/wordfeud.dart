@@ -372,7 +372,8 @@ class WordfeudEngine {
     final parsedRack = <String>[];
     for (int i = 0; i < predictions.length; i++) {
       final prediction = predictions[i];
-      parsedRack.add(prediction == 'EMPTY' ? '?' : prediction);
+      final mappedPrediction = prediction == 'EMPTY' ? '' : prediction;
+      parsedRack.add(mappedPrediction);
       tiles[i].dispose();
     }
 
@@ -446,6 +447,7 @@ class WordfeudEngine {
     final predictions = List<String>.filled(cells.length, 'EMPTY');
     for (int i = 0; i < cells.length; i++) {
       final tileType = _tileTypeLabels[_argmax(tileLogits[i])];
+
       if (tileType == 'EMPTY') {
         predictions[i] = 'EMPTY';
       } else if (tileType == 'MODIFIER') {
@@ -458,7 +460,7 @@ class WordfeudEngine {
 
     inferenceStopwatch.stop();
     developer.log(
-      'Tile inference: ${cells.length} cells in '
+      'WordfeudEngine: Tile inference: ${cells.length} cells in '
       '${inferenceStopwatch.elapsedMilliseconds}ms',
       name: 'WordfeudEngine',
     );
@@ -761,7 +763,7 @@ class WordfeudEngine {
 
   List<Move> _findAllMoves(List<List<String>> board, List<String> rack) {
     List<String> cleanRack = rack
-        .where((t) => RegExp(r'[A-Za-z?]').hasMatch(t))
+        .where((t) => RegExp(r'^[A-Za-z?]$').hasMatch(t))
         .map((t) => t.toUpperCase())
         .toList();
 

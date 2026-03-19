@@ -351,13 +351,13 @@ class _SolverHomePageState extends State<SolverHomePage> {
     return Container(
       height: 48,
       decoration: BoxDecoration(
-        color: tile == '?' ? Colors.brown.shade200 : Colors.white,
+        color: tile == '' ? Colors.brown.shade200 : Colors.white,
         border: Border.all(color: Colors.brown.shade300),
         borderRadius: BorderRadius.circular(4),
       ),
       alignment: Alignment.center,
       child: Text(
-        tile,
+        tile == '?' ? '' : tile,
         style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
       ),
     );
