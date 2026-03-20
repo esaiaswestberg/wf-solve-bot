@@ -30,6 +30,12 @@ def init_db(conn: sqlite3.Connection) -> None:
             opponent_score INTEGER NOT NULL,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS turn_schedule (
+            game_id INTEGER PRIMARY KEY,
+            tile_count INTEGER NOT NULL,
+            play_at TIMESTAMP NOT NULL
+        );
     """)
     conn.commit()
 
@@ -67,4 +73,27 @@ def upsert_game_snapshot(conn: sqlite3.Connection, game_id: int, opponent_userna
         "INSERT OR REPLACE INTO game_snapshots (game_id, opponent_username, opponent_score) VALUES (?, ?, ?)",
         (game_id, opponent_username, opponent_score)
     )
+    conn.commit()
+
+
+def get_turn_schedule(conn: sqlite3.Connection, game_id: int) -> dict | None:
+    row = conn.execute(
+        "SELECT tile_count, play_at FROM turn_schedule WHERE game_id = ?",
+        (game_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    return {'tile_count': row['tile_count'], 'play_at': row['play_at']}
+
+
+def set_turn_schedule(conn: sqlite3.Connection, game_id: int, tile_count: int, play_at: str) -> None:
+    conn.execute(
+        "INSERT OR REPLACE INTO turn_schedule (game_id, tile_count, play_at) VALUES (?, ?, ?)",
+        (game_id, tile_count, play_at)
+    )
+    conn.commit()
+
+
+def delete_turn_schedule(conn: sqlite3.Connection, game_id: int) -> None:
+    conn.execute("DELETE FROM turn_schedule WHERE game_id = ?", (game_id,))
     conn.commit()

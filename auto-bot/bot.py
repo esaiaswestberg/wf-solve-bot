@@ -1,15 +1,20 @@
 import os
 import sys
 import time
-from datetime import datetime
+import random
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 load_dotenv()
 from wordfeud_api import Wordfeud
 from solver import find_all_moves, build_trie
 from scorer import rank_moves, load_point_values
-from database import get_connection, init_db, get_opponent_avg_score, record_opponent_move, get_game_snapshot, upsert_game_snapshot
+from database import (get_connection, init_db, get_opponent_avg_score, record_opponent_move,
+                      get_game_snapshot, upsert_game_snapshot,
+                      get_turn_schedule, set_turn_schedule, delete_turn_schedule)
 
 POLL_INTERVAL = int(os.environ.get('WF_POLL_INTERVAL', '30'))
+MIN_WAIT_SECONDS = int(os.environ.get('WF_MIN_WAIT_SECONDS', str(5 * 60)))       # default 5 min
+MAX_WAIT_SECONDS = int(os.environ.get('WF_MAX_WAIT_SECONDS', str(6 * 60 * 60)))  # default 6 hours
 
 
 def ts():
@@ -23,24 +28,16 @@ DICTIONARIES = {
     'swedish': {
         'words': os.path.join(os.path.dirname(__file__), '..', 'py-solver', 'dictionaries', 'swedish', 'swedish', 'dictionary.txt'),
         'points': os.path.join(os.path.dirname(__file__), '..', 'py-solver', 'dictionaries', 'swedish', 'swedish', 'letter_values.csv'),
-        'ruleset': 4,
+        'rulesets': [4],
     },
     'english': {
         'words': os.path.join(os.path.dirname(__file__), '..', 'py-solver', 'dictionaries', 'english', 'sowpods', 'dictionary.txt'),
         'points': os.path.join(os.path.dirname(__file__), '..', 'py-solver', 'dictionaries', 'english', 'sowpods', 'letter_values.csv'),
-        'ruleset': 0,
+        'rulesets': [0, 5],
     },
 }
 
-
-def load_dictionary(language):
-    config = DICTIONARIES.get(language)
-    if not config:
-        print(f"Unknown language '{language}'. Supported: {list(DICTIONARIES.keys())}")
-        sys.exit(1)
-
-    with open(config['words'], 'r', encoding='utf-8') as f:
-        return f.readlines()
+RULESET_TO_LANGUAGE = {rs: lang for lang, cfg in DICTIONARIES.items() for rs in cfg['rulesets']}
 
 
 def build_board(game, board_layout):
@@ -146,9 +143,16 @@ def choose_target_score(conn, opponent_username, is_first_move):
     return None
 
 
-def play_best_move(wf, game, board_layout, trie, points_dict, conn):
+def play_best_move(wf, game, board_layout, dictionaries, conn):
     game_id = game['id']
     ruleset = game['ruleset']
+
+    lang = RULESET_TO_LANGUAGE.get(ruleset)
+    if lang is None:
+        print(f"{ts()}   Unknown ruleset {ruleset} — skipping game {game_id}.")
+        return
+    trie = dictionaries[lang]['trie']
+    points_dict = dictionaries[lang]['points_dict']
 
     board = build_board(game, board_layout)
     my_player = get_my_player(game)
@@ -196,7 +200,37 @@ def play_best_move(wf, game, board_layout, trie, points_dict, conn):
     wf.skip_turn(game_id, ruleset)
 
 
-def run_once(wf, trie, points_dict, board_cache, conn):
+def should_play_now(conn, game) -> bool:
+    """
+    Returns True if it's time to play this turn, False if still waiting.
+
+    On each new turn, schedules a random delay between MIN_WAIT_SECONDS and
+    MAX_WAIT_SECONDS. The schedule is keyed on tile count so a new turn always
+    gets a fresh delay, independent of the previous one.
+    """
+    game_id = game['id']
+    tile_count = len(game.get('tiles', []))
+    schedule = get_turn_schedule(conn, game_id)
+
+    if schedule is None or schedule['tile_count'] != tile_count:
+        delay = random.uniform(MIN_WAIT_SECONDS, MAX_WAIT_SECONDS)
+        play_at = datetime.now() + timedelta(seconds=delay)
+        set_turn_schedule(conn, game_id, tile_count, play_at.isoformat())
+        print(f"{ts()}   Scheduled to play at {play_at.strftime('%H:%M:%S')} "
+              f"(in {delay/60:.1f} min)")
+        return False
+
+    play_at = datetime.fromisoformat(schedule['play_at'])
+    if datetime.now() >= play_at:
+        return True
+
+    remaining = (play_at - datetime.now()).total_seconds()
+    print(f"{ts()}   Waiting until {play_at.strftime('%H:%M:%S')} "
+          f"({remaining/60:.1f} min remaining)")
+    return False
+
+
+def run_once(wf, dictionaries, board_cache, conn):
     print(f"{ts()} Checking for pending invites...")
     status = wf.get_status()
     invites = status.get('invites_received', [])
@@ -225,17 +259,20 @@ def run_once(wf, trie, points_dict, board_cache, conn):
         if opponent:
             upsert_game_snapshot(conn, game_id, opponent_username, opponent.get('score', 0))
 
+        if not should_play_now(conn, game):
+            continue
+
         if board_id not in board_cache:
             board_cache[board_id] = wf.get_board(board_id)
         board_layout = board_cache[board_id]
 
-        play_best_move(wf, game, board_layout, trie, points_dict, conn)
+        play_best_move(wf, game, board_layout, dictionaries, conn)
+        delete_turn_schedule(conn, game_id)
 
 
 def main():
     email = os.environ.get('WF_EMAIL')
     password = os.environ.get('WF_PASSWORD')
-    language = os.environ.get('WF_LANGUAGE', 'swedish')
 
     if not email or not password:
         print("Error: WF_EMAIL and WF_PASSWORD environment variables must be set.")
@@ -246,20 +283,23 @@ def main():
     wf.login_email(email, password)
     print(f"{ts()} Logged in.")
 
-    lang_config = DICTIONARIES[language]
-    print(f"{ts()} Loading {language} dictionary...")
-    dictionary = load_dictionary(language)
-    points_dict = load_point_values(lang_config['points'])
-    print(f"{ts()} Building Trie...")
-    trie = build_trie(dictionary)
-    print(f"{ts()} Dictionary loaded ({len(dictionary)} words).")
+    dictionaries = {}
+    for lang, config in DICTIONARIES.items():
+        print(f"{ts()} Loading {lang} dictionary...")
+        with open(config['words'], 'r', encoding='utf-8') as f:
+            words = f.readlines()
+        points_dict = load_point_values(config['points'])
+        print(f"{ts()} Building Trie for {lang}...")
+        trie = build_trie(words)
+        dictionaries[lang] = {'trie': trie, 'points_dict': points_dict}
+        print(f"{ts()} {lang} dictionary loaded ({len(words)} words).")
 
     conn = get_connection()
     init_db(conn)
     board_cache = {}
     while True:
         try:
-            run_once(wf, trie, points_dict, board_cache, conn)
+            run_once(wf, dictionaries, board_cache, conn)
         except Exception as e:
             print(f"{ts()} [error] {e}")
         print(f"{ts()} Sleeping {POLL_INTERVAL}s...")
