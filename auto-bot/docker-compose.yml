@@ -1,9 +1,14 @@
 services:
   bot:
-    build:
-      context: ..
-      dockerfile: auto-bot/Dockerfile
-    env_file: .env
+    image: ghcr.io/esaiaswestberg/wf-solve-bot:latest
+    environment:
+      WF_EMAIL: your@email.com
+      WF_PASSWORD: yourpassword
+      WF_POLL_INTERVAL: 30
+      WF_MIN_WAIT_SECONDS: 300
+      WF_MAX_WAIT_SECONDS: 21600
+      WF_INVITE_CHANCE: 0.20
+      WF_DB_PATH: /data/wf_bot.db
     volumes:
       - bot-data:/data
     restart: unless-stopped
