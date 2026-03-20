@@ -1,0 +1,65 @@
+name: Android Release
+
+on:
+  release:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  release-android:
+    name: Build and Upload AAB to Play Console
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.41.4
+          cache: true
+
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > flutter/android/app/upload-key.keystore
+
+      - name: Write key.properties
+        run: |
+          cat > flutter/android/key.properties <<EOF
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=app/upload-key.keystore
+          EOF
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+        working-directory: ./flutter
+
+      - name: Build release AAB
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          flutter build appbundle --release \
+            --build-name="$VERSION" \
+            --build-number="${{ github.run_number }}"
+        working-directory: ./flutter
+
+      - name: Upload to Play Console (internal track)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: tech.low_stack.qy
+          releaseFiles: flutter/build/app/outputs/bundle/release/app-release.aab
+          track: internal
