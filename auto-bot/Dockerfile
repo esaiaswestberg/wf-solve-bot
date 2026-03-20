@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # git is required to install the wordfeud API from GitHub
 RUN apt-get update && apt-get install -y --no-install-recommends git \
