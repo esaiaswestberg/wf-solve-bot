@@ -16,6 +16,7 @@ POLL_INTERVAL = int(os.environ.get('WF_POLL_INTERVAL', '30'))
 MIN_WAIT_SECONDS = int(os.environ.get('WF_MIN_WAIT_SECONDS', str(5 * 60)))       # default 5 min
 MAX_WAIT_SECONDS = int(os.environ.get('WF_MAX_WAIT_SECONDS', str(6 * 60 * 60)))  # default 6 hours
 INVITE_CHANCE = float(os.environ.get('WF_INVITE_CHANCE', '0.20'))                # default 20%
+MAX_ACTIVE_GAMES = int(os.environ.get('WF_MAX_ACTIVE_GAMES', '30'))
 
 
 def ts():
@@ -261,13 +262,13 @@ def run_once(wf, dictionaries, board_cache, conn):
             wf.accept_invite(invite['id'])
             print(f"{ts()}   Accepted invite {invite['id']}.")
 
-    invites_sent = status.get('invites_sent', [])
-    if not invites and not invites_sent:
-        maybe_invite_random_opponent(wf)
-
     print(f"{ts()} Fetching games...")
     games_response = wf.get_games()
     games = games_response if isinstance(games_response, list) else games_response.get('games', [])
+
+    invites_sent = status.get('invites_sent', [])
+    if not invites and not invites_sent and len(games) < MAX_ACTIVE_GAMES:
+        maybe_invite_random_opponent(wf)
 
     pending = [g for g in games if is_my_turn(g)]
     print(f"{ts()} {len(games)} active game(s), {len(pending)} waiting for your move.")
