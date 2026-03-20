@@ -15,6 +15,7 @@ from database import (get_connection, init_db, get_opponent_avg_score, record_op
 POLL_INTERVAL = int(os.environ.get('WF_POLL_INTERVAL', '30'))
 MIN_WAIT_SECONDS = int(os.environ.get('WF_MIN_WAIT_SECONDS', str(5 * 60)))       # default 5 min
 MAX_WAIT_SECONDS = int(os.environ.get('WF_MAX_WAIT_SECONDS', str(6 * 60 * 60)))  # default 6 hours
+INVITE_CHANCE = float(os.environ.get('WF_INVITE_CHANCE', '0.20'))                # default 20%
 
 
 def ts():
@@ -234,6 +235,22 @@ def should_play_now(conn, game) -> bool:
     return False
 
 
+def maybe_invite_random_opponent(wf):
+    if random.random() >= INVITE_CHANCE:
+        return
+    all_rulesets = [rs for cfg in DICTIONARIES.values() for rs in cfg['rulesets']]
+    ruleset = random.choice(all_rulesets)
+    board_type = random.choice([Wordfeud.BoardNormal, Wordfeud.BoardRandom])
+    board_name = 'normal' if board_type == Wordfeud.BoardNormal else 'random'
+    lang = RULESET_TO_LANGUAGE.get(ruleset, ruleset)
+    print(f"{ts()} Sending random opponent invite (ruleset={ruleset}/{lang}, board={board_name})...")
+    res = wf.invite_random_opponent(ruleset, board_type)
+    if isinstance(res, dict) and res.get('status') == 'error':
+        print(f"{ts()} Invite failed: {res.get('content', {}).get('type', 'unknown error')}")
+    else:
+        print(f"{ts()} Invite sent.")
+
+
 def run_once(wf, dictionaries, board_cache, conn):
     print(f"{ts()} Checking for pending invites...")
     status = wf.get_status()
@@ -243,6 +260,10 @@ def run_once(wf, dictionaries, board_cache, conn):
         for invite in invites:
             wf.accept_invite(invite['id'])
             print(f"{ts()}   Accepted invite {invite['id']}.")
+
+    invites_sent = status.get('invites_sent', [])
+    if not invites and not invites_sent:
+        maybe_invite_random_opponent(wf)
 
     print(f"{ts()} Fetching games...")
     games_response = wf.get_games()
