@@ -5,4 +5,6 @@ __pycache__
 .env*
 !.env.example
 
-*.db
+wf_bot.db
+wf_bot.db-shm
+wf_bot.db-wal
