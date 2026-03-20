@@ -53,7 +53,7 @@ jobs:
           VERSION="${VERSION#v}"
           flutter build appbundle --release \
             --build-name="$VERSION" \
-            --build-number="${{ github.run_number }}"
+            --build-number="${{ github.run_number * 10 + 100 }}"
         working-directory: ./flutter
 
       - name: Upload to Play Console (internal track)
