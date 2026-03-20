@@ -7,6 +7,7 @@ load_dotenv()
 from wordfeud_api import Wordfeud
 from solver import find_all_moves, build_trie
 from scorer import rank_moves, load_point_values
+from database import get_connection, init_db, get_opponent_avg_score, record_opponent_move, get_game_snapshot, upsert_game_snapshot
 
 POLL_INTERVAL = int(os.environ.get('WF_POLL_INTERVAL', '30'))
 
@@ -109,7 +110,43 @@ def convert_move_to_tiles(move, board):
 
 
 
-def play_best_move(wf, game, board_layout, trie, points_dict):
+def observe_opponent_move(conn, game, opponent_username):
+    """Records the opponent's last move score by diffing their score against the stored snapshot."""
+    game_id = game['id']
+    opponent = next((p for p in game.get('players', []) if not p.get('is_local')), None)
+    if not opponent:
+        return
+
+    current_score = opponent.get('score', 0)
+    snapshot = get_game_snapshot(conn, game_id)
+
+    if snapshot is not None and snapshot['opponent_username'] == opponent_username:
+        delta = current_score - snapshot['opponent_score']
+        if delta > 0:
+            record_opponent_move(conn, opponent_username, game_id, delta)
+            print(f"{ts()}   Recorded opponent move score: {delta}p")
+
+
+def choose_target_score(conn, opponent_username, is_first_move):
+    """
+    Returns the target move score the bot should aim for, or None to play best.
+
+    - Known opponent: use their average move score.
+    - Unknown opponent, first move: target 17 (midpoint of 15-20).
+    - Unknown opponent, not first move: play best (None).
+    """
+    avg = get_opponent_avg_score(conn, opponent_username)
+    if avg is not None:
+        target = round(avg)
+        print(f"{ts()}   Opponent '{opponent_username}' avg score: {avg:.1f}p → target: {target}p")
+        return target
+    if is_first_move:
+        print(f"{ts()}   Unknown opponent, first move → target: 17p")
+        return 17
+    return None
+
+
+def play_best_move(wf, game, board_layout, trie, points_dict, conn):
     game_id = game['id']
     ruleset = game['ruleset']
 
@@ -128,12 +165,22 @@ def play_best_move(wf, game, board_layout, trie, points_dict):
         return
 
     ranked = rank_moves(moves, board, points_dict)
-    best = ranked[0]
 
-    print(f"{ts()}   Best move: '{best['word']}' at row={best['row']}, col={best['col']}, "
-          f"dir={best['direction']}, score={best['score']}")
+    opponent_username = next((p['username'] for p in game.get('players', []) if not p.get('is_local')), None)
+    is_first_move = len(game.get('tiles', [])) == 0
+    target_score = choose_target_score(conn, opponent_username, is_first_move)
 
-    for move in ranked:
+    if target_score is None:
+        selected = ranked[0]
+    else:
+        selected = min(ranked, key=lambda m: abs(m['score'] - target_score))
+
+    print(f"{ts()}   Selected move: '{selected['word']}' at row={selected['row']}, col={selected['col']}, "
+          f"dir={selected['direction']}, score={selected['score']}")
+
+    attempt_order = [selected] + [m for m in ranked if m is not selected]
+
+    for move in attempt_order:
         tiles = convert_move_to_tiles(move, board)
         word = move['word'].upper()
         print(f"\n{ts()}   Trying '{word}' (score={move['score']}) — tiles: {tiles}")
@@ -149,7 +196,7 @@ def play_best_move(wf, game, board_layout, trie, points_dict):
     wf.skip_turn(game_id, ruleset)
 
 
-def run_once(wf, trie, points_dict, board_cache):
+def run_once(wf, trie, points_dict, board_cache, conn):
     print(f"{ts()} Checking for pending invites...")
     status = wf.get_status()
     invites = status.get('invites_received', [])
@@ -169,14 +216,20 @@ def run_once(wf, trie, points_dict, board_cache):
     for game in pending:
         game_id = game['id']
         board_id = game['board']
-        opponent = next((p['username'] for p in game['players'] if not p.get('is_local')), 'Unknown')
-        print(f"{ts()} Game {game_id} vs {opponent}:")
+        opponent_username = next((p['username'] for p in game['players'] if not p.get('is_local')), 'Unknown')
+        print(f"{ts()} Game {game_id} vs {opponent_username}:")
+
+        observe_opponent_move(conn, game, opponent_username)
+
+        opponent = next((p for p in game['players'] if not p.get('is_local')), None)
+        if opponent:
+            upsert_game_snapshot(conn, game_id, opponent_username, opponent.get('score', 0))
 
         if board_id not in board_cache:
             board_cache[board_id] = wf.get_board(board_id)
         board_layout = board_cache[board_id]
 
-        play_best_move(wf, game, board_layout, trie, points_dict)
+        play_best_move(wf, game, board_layout, trie, points_dict, conn)
 
 
 def main():
@@ -201,10 +254,12 @@ def main():
     trie = build_trie(dictionary)
     print(f"{ts()} Dictionary loaded ({len(dictionary)} words).")
 
+    conn = get_connection()
+    init_db(conn)
     board_cache = {}
     while True:
         try:
-            run_once(wf, trie, points_dict, board_cache)
+            run_once(wf, trie, points_dict, board_cache, conn)
         except Exception as e:
             print(f"{ts()} [error] {e}")
         print(f"{ts()} Sleeping {POLL_INTERVAL}s...")
