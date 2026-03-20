@@ -5,7 +5,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 load_dotenv()
 from wordfeud_api import Wordfeud
-from solver import find_all_moves
+from solver import find_all_moves, build_trie
 from scorer import rank_moves, load_point_values
 
 POLL_INTERVAL = int(os.environ.get('WF_POLL_INTERVAL', '30'))
@@ -87,7 +87,7 @@ def convert_move_to_tiles(move, board):
     Converts a solver move to the API tile placement format.
 
     Only tiles that land on empty/bonus squares are new placements.
-    Returns a list of [col, row, letter_upper, is_wildcard].
+    Returns a list of [row, col, letter_upper, is_wildcard].
     Wildcard tiles are identified by lowercase letters in the solver's word output.
     """
     word = move['word']
@@ -103,12 +103,13 @@ def convert_move_to_tiles(move, board):
         # Only submit tiles that are newly placed (board square is not an existing letter)
         if len(board[r][c]) != 1:
             is_wildcard = char.islower()
-            tiles.append([c, r, char.upper(), is_wildcard])
+            tiles.append([r, c, char.upper(), is_wildcard])
 
     return tiles
 
 
-def play_best_move(wf, game, board_layout, dictionary, points_dict):
+
+def play_best_move(wf, game, board_layout, trie, points_dict):
     game_id = game['id']
     ruleset = game['ruleset']
 
@@ -118,7 +119,7 @@ def play_best_move(wf, game, board_layout, dictionary, points_dict):
 
     print(f"{ts()}   Rack: {rack}")
 
-    moves = find_all_moves(board, rack, dictionary)
+    moves = find_all_moves(board, rack, trie)
     print(f"{ts()}   Found {len(moves)} valid moves.")
 
     if not moves:
@@ -135,7 +136,7 @@ def play_best_move(wf, game, board_layout, dictionary, points_dict):
     for move in ranked:
         tiles = convert_move_to_tiles(move, board)
         word = move['word'].upper()
-        print(f"{ts()}   Trying '{word}' (score={move['score']}) — tiles: {tiles}")
+        print(f"\n{ts()}   Trying '{word}' (score={move['score']}) — tiles: {tiles}")
         res = wf.place(game_id, ruleset, tiles, word)
         if res and res.get('status') == 'error':
             error_type = res.get('content', {}).get('type', 'unknown')
@@ -148,7 +149,7 @@ def play_best_move(wf, game, board_layout, dictionary, points_dict):
     wf.skip_turn(game_id, ruleset)
 
 
-def run_once(wf, dictionary, points_dict, board_cache):
+def run_once(wf, trie, points_dict, board_cache):
     print(f"{ts()} Checking for pending invites...")
     status = wf.get_status()
     invites = status.get('invites_received', [])
@@ -175,7 +176,7 @@ def run_once(wf, dictionary, points_dict, board_cache):
             board_cache[board_id] = wf.get_board(board_id)
         board_layout = board_cache[board_id]
 
-        play_best_move(wf, game, board_layout, dictionary, points_dict)
+        play_best_move(wf, game, board_layout, trie, points_dict)
 
 
 def main():
@@ -196,12 +197,14 @@ def main():
     print(f"{ts()} Loading {language} dictionary...")
     dictionary = load_dictionary(language)
     points_dict = load_point_values(lang_config['points'])
+    print(f"{ts()} Building Trie...")
+    trie = build_trie(dictionary)
     print(f"{ts()} Dictionary loaded ({len(dictionary)} words).")
 
     board_cache = {}
     while True:
         try:
-            run_once(wf, dictionary, points_dict, board_cache)
+            run_once(wf, trie, points_dict, board_cache)
         except Exception as e:
             print(f"{ts()} [error] {e}")
         print(f"{ts()} Sleeping {POLL_INTERVAL}s...")

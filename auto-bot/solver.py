@@ -19,6 +19,7 @@ class Trie:
         """Returns True if the exact word exists in the Trie."""
         node = self.root
         for char in word:
+            char = char.upper()
             if char not in node.children:
                 return False
             node = node.children[char]
@@ -158,10 +159,7 @@ def left_part(board, row, anchor_col, limit, rack, current_node, prefix, cross_c
                     left_part(board, row, anchor_col, limit - 1, rack, current_node.children[char], prefix + char, cross_checks, results, start_col - 1)
                     rack.append(char)
 
-def find_all_moves(board, rack, dictionary_array):
-    print("Building dictionary Trie...")
-    trie = build_trie(dictionary_array)
-
+def find_all_moves(board, rack, trie):
     # Allow '?' to stay in the rack, while forcing A-Z to uppercase
     clean_rack = [tile.upper() if tile.isalpha() else tile for tile in rack if tile.isalpha() or tile == '?']
     all_moves = []
@@ -214,9 +212,7 @@ def find_all_moves(board, rack, dictionary_array):
                 else:
                     all_moves.append({'word': word, 'row': row, 'col': start_col, 'direction': 'H'})
 
-    print("Scanning horizontally...")
     scan_board(board, is_transposed=False)
-    print("Scanning vertically...")
     transposed_board = transpose_board(board)
     scan_board(transposed_board, is_transposed=True)
 
