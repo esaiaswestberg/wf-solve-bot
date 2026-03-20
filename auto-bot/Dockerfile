@@ -14,6 +14,7 @@ COPY py-solver/dictionaries/ py-solver/dictionaries/
 
 WORKDIR /app/auto-bot
 
+ENV PYTHONUNBUFFERED=1
 ENV WF_DB_PATH=/data/wf_bot.db
 
 CMD ["python", "bot.py"]
