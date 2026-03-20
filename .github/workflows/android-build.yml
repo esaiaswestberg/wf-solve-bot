@@ -4,9 +4,13 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - 'flutter/**'
   push:
     branches:
       - main
+    paths:
+      - 'flutter/**'
 
 permissions:
   contents: read
