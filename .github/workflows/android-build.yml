@@ -39,6 +39,6 @@ jobs:
         run: flutter pub get --enforce-lockfile
         working-directory: ./flutter
 
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Build debug APK
+        run: flutter build apk --debug
         working-directory: ./flutter
