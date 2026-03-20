@@ -210,6 +210,10 @@ def should_play_now(conn, game) -> bool:
     """
     game_id = game['id']
     tile_count = len(game.get('tiles', []))
+
+    if tile_count == 0:
+        return True
+
     schedule = get_turn_schedule(conn, game_id)
 
     if schedule is None or schedule['tile_count'] != tile_count:
