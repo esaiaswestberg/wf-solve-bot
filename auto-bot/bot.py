@@ -1,10 +1,18 @@
 import os
 import sys
+import time
+from datetime import datetime
 from dotenv import load_dotenv
 load_dotenv()
 from wordfeud_api import Wordfeud
 from solver import find_all_moves
 from scorer import rank_moves, load_point_values
+
+POLL_INTERVAL = int(os.environ.get('WF_POLL_INTERVAL', '30'))
+
+
+def ts():
+    return datetime.now().strftime('[%H:%M:%S]')
 
 # Maps the integer board square codes returned by the Wordfeud API
 # to the string format expected by the solver.
@@ -108,35 +116,66 @@ def play_best_move(wf, game, board_layout, dictionary, points_dict):
     my_player = get_my_player(game)
     rack = convert_rack(my_player['rack'])
 
-    print(f"  Rack: {rack}")
+    print(f"{ts()}   Rack: {rack}")
 
     moves = find_all_moves(board, rack, dictionary)
-    print(f"  Found {len(moves)} valid moves.")
+    print(f"{ts()}   Found {len(moves)} valid moves.")
 
     if not moves:
-        print("  No valid moves — skipping turn.")
+        print(f"{ts()}   No valid moves — skipping turn.")
         wf.skip_turn(game_id, ruleset)
         return
 
     ranked = rank_moves(moves, board, points_dict)
     best = ranked[0]
 
-    print(f"  Best move: '{best['word']}' at row={best['row']}, col={best['col']}, "
+    print(f"{ts()}   Best move: '{best['word']}' at row={best['row']}, col={best['col']}, "
           f"dir={best['direction']}, score={best['score']}")
 
     for move in ranked:
         tiles = convert_move_to_tiles(move, board)
         word = move['word'].upper()
-        print(f"  Trying '{word}' (score={move['score']}) — tiles: {tiles}")
+        print(f"{ts()}   Trying '{word}' (score={move['score']}) — tiles: {tiles}")
         res = wf.place(game_id, ruleset, tiles, word)
-        if res and res.get('status') == 'error' and res.get('content', {}).get('type') == 'illegal_word':
-            print(f"  Rejected (illegal_word), trying next move...")
+        if res and res.get('status') == 'error':
+            error_type = res.get('content', {}).get('type', 'unknown')
+            print(f"{ts()}   Rejected ({error_type}), trying next move...")
             continue
-        print(f"  Played successfully. API response: {res}")
+        print(f"{ts()}   Played successfully. API response: {res}")
         return
 
-    print("  All moves rejected — skipping turn.")
+    print(f"{ts()}   All moves rejected — skipping turn.")
     wf.skip_turn(game_id, ruleset)
+
+
+def run_once(wf, dictionary, points_dict, board_cache):
+    print(f"{ts()} Checking for pending invites...")
+    status = wf.get_status()
+    invites = status.get('invites_received', [])
+    if invites:
+        print(f"{ts()} Found {len(invites)} invite(s) — accepting all.")
+        for invite in invites:
+            wf.accept_invite(invite['id'])
+            print(f"{ts()}   Accepted invite {invite['id']}.")
+
+    print(f"{ts()} Fetching games...")
+    games_response = wf.get_games()
+    games = games_response if isinstance(games_response, list) else games_response.get('games', [])
+
+    pending = [g for g in games if is_my_turn(g)]
+    print(f"{ts()} {len(games)} active game(s), {len(pending)} waiting for your move.")
+
+    for game in pending:
+        game_id = game['id']
+        board_id = game['board']
+        opponent = next((p['username'] for p in game['players'] if not p.get('is_local')), 'Unknown')
+        print(f"{ts()} Game {game_id} vs {opponent}:")
+
+        if board_id not in board_cache:
+            board_cache[board_id] = wf.get_board(board_id)
+        board_layout = board_cache[board_id]
+
+        play_best_move(wf, game, board_layout, dictionary, points_dict)
 
 
 def main():
@@ -148,45 +187,25 @@ def main():
         print("Error: WF_EMAIL and WF_PASSWORD environment variables must be set.")
         sys.exit(1)
 
-    print(f"Logging in as {email}...")
+    print(f"{ts()} Logging in as {email}...")
     wf = Wordfeud()
     wf.login_email(email, password)
-    print("Logged in.")
+    print(f"{ts()} Logged in.")
 
     lang_config = DICTIONARIES[language]
-    print(f"Loading {language} dictionary...")
+    print(f"{ts()} Loading {language} dictionary...")
     dictionary = load_dictionary(language)
     points_dict = load_point_values(lang_config['points'])
-    print(f"Dictionary loaded ({len(dictionary)} words).")
+    print(f"{ts()} Dictionary loaded ({len(dictionary)} words).")
 
-    print("Checking for pending invites...")
-    status = wf.get_status()
-    invites = status.get('invites_received', [])
-    if invites:
-        print(f"Found {len(invites)} invite(s) — accepting all.")
-        for invite in invites:
-            wf.accept_invite(invite['id'])
-            print(f"  Accepted invite {invite['id']}.")
-    else:
-        print("No pending invites.")
-
-    print("Fetching games...")
-    games_response = wf.get_games()
-    games = games_response if isinstance(games_response, list) else games_response.get('games', [])
-    print(f"Found {len(games)} active game(s).")
-
-    pending = [g for g in games if is_my_turn(g)]
-    print(f"{len(pending)} game(s) waiting for your move.")
-
-    for game in pending:
-        game_id = game['id']
-        opponent = next((p['username'] for p in game['players'] if not p.get('is_local')), 'Unknown')
-        print(f"\nGame {game_id} vs {opponent}:")
-
-        board_layout = wf.get_board(game['board'])
-        play_best_move(wf, game, board_layout, dictionary, points_dict)
-
-    print("\nDone.")
+    board_cache = {}
+    while True:
+        try:
+            run_once(wf, dictionary, points_dict, board_cache)
+        except Exception as e:
+            print(f"{ts()} [error] {e}")
+        print(f"{ts()} Sleeping {POLL_INTERVAL}s...")
+        time.sleep(POLL_INTERVAL)
 
 
 if __name__ == '__main__':
