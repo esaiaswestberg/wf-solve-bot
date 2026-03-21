@@ -167,7 +167,7 @@ def play_best_move(wf, game, board_layout, dictionaries, conn):
 
     if not moves:
         print(f"{ts()}   No valid moves — skipping turn.")
-        wf.skip_turn(game_id, ruleset)
+        wf.skip_turn(game_id)
         return
 
     ranked = rank_moves(moves, board, points_dict)
@@ -199,7 +199,7 @@ def play_best_move(wf, game, board_layout, dictionaries, conn):
         return
 
     print(f"{ts()}   All moves rejected — skipping turn.")
-    wf.skip_turn(game_id, ruleset)
+    wf.skip_turn(game_id)
 
 
 def should_play_now(conn, game) -> bool:
